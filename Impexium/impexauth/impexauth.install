@@ -1,0 +1,78 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the Impexium SSO module;
+ *
+ * Start Date : 23th March'2017;
+ * Author : Vinek T.;
+ */
+
+/**
+ * Implements hook_schema();
+ *
+ */
+function impexauth_schema() {
+	$schema['fs_impexium_auth'] = array(
+	    'description' => 'To set the impexium configuration with sso settings.',
+	    'fields' => array(
+			'id' => array(
+				'type' => 'serial',
+				'length' => 11,
+				'not null' => TRUE,
+			),
+			'uid' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'userId' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'member_type' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+			'appToken' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'userToken' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+		),
+		'primary key' => array('id'),
+		'auto increment' => 1,
+	);
+	return $schema;
+} 
+
+
+/**
+ * Install the module and insert the record into the table if neccessory;
+ *
+ */
+function impexauth_install() {
+	
+}
+
+
+/**
+ * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ *
+ */
+function impexauth_uninstall() {
+	variable_del('id');
+	variable_del('uid');
+	variable_del('userId');
+	variable_del('member_type');
+	variable_del('appToken');
+	variable_del('userToken');
+	// drupal_set_message(t('Selected Impexium module has been successfully uninstalled.'));
+}

@@ -1,0 +1,1036 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : This module is to execute to synchronize the product for users from netforum;
+ * Date : 9th Nov'2016;
+ *
+ * Author : Vinek T.;
+ *
+ */
+
+/**
+ * Implements hook_init().
+ */
+function netproductsync_init() {
+	if (isset($_SESSION['netproductsync_link'])) {
+		drupal_add_link($_SESSION['netproductsync_link']);
+		unset($_SESSION['netproductsync_link']);
+	}
+}
+
+/**
+ * Implements hook_menu().
+ */
+function netproductsync_menu() {
+	$items = array();
+	$items['admin/config/netforum'] = array(
+		'title' => 'Netforum',
+		'description' => 'Set the connection characteristics for the netFORUM database',
+		'page callback' => 'system_admin_menu_block_page',
+		'access arguments' => array('administer site configuration'),
+		'file' => 'system.admin.inc',
+		'file path' => drupal_get_path('module', 'system'),
+	);
+	$items['admin/config/netforum/netproduct/settings/1'] = array(
+		'title' => 'netForum Product and Sync',
+		'description' => 'Manage to sync the product from netFORUM',
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('netforum_productsync_settings'),
+		'access arguments' => array('administer site configuration'),
+	);
+	$items['admin/config/netforum/productlist'] = array(
+		'title' => 'netForum Product List',
+		'description' => 'Manage and edit the product download uri from netFORUM',
+		'page callback' => 'netproductsync_list',
+		'access arguments' => array('administer site configuration'),
+	);
+	$items['admin/config/netforum/productlist/edit'] = array(
+		'title' => 'netForum Product Edit',
+		'description' => 'Edit the product download url from netFORUM',
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('netproduct_edit_popup'),
+		'access arguments' => array('administer site configuration'),
+	);
+	return $items;
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function netproductsync_block_info() {
+	$blocks = array();
+	$blocks['net_product_sync'] = array(
+		'info' => t('NetForum Product Sync'),
+	);
+	$blocks['net_product_detail'] = array(
+		'info' => t('NetForum Product Details'),
+	);
+	return $blocks;
+}
+
+/**
+ * The callback function for settings up the form for netFORUM product sync.
+ * This callback function will display the form to the admin side into Fusionspan group module
+ */
+function netforum_productsync_settings($form, &$form_state) {
+	$query = db_select('fs_netproduct_setting');
+	$query->fields('fs_netproduct_setting',array('sync_frequency','product_type_inc','product_type_exc','site_name','stored_product','remove_fromdate','crontime'));
+	$query->condition('id', 1);
+	$record = $query->execute()->fetchAssoc();
+	if (empty($record['crontime']) || is_null($record['crontime'])) {
+		$cron_run = "Nevre";
+	} else {
+		$cron_run = $record['crontime'];
+	}
+
+	$form['netproduct'] = array(
+		'#title' => "netForum Products Sync",
+		'#type' => 'fieldset',
+	);
+	$options = array(
+		'Hourly' => t('Hourly'),
+		'Twice Daily' => t('Twice Daily'),
+		'Daily' => t('Daily'),
+		'Weekly' => t('Weekly'),
+	);
+	$form['netproduct']['sync_frequency'] = array(
+		'#type' => 'radios',
+		'#title' => t('Sync Frequency'),
+		'#options' => $options,
+		'#description' => t(''),
+		'#default_value' => $record['sync_frequency'],
+	);
+	$form['netproduct']['product_type_inc'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Product types to include (comma seperated)'),
+		'#description' => t(''),
+		'#required' => TRUE,
+		'#size' => 60,
+		'#default_value' => $record['product_type_inc'],
+	);
+	$form['netproduct']['product_type_exc'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Product types to exclude (comma seperated)'),
+		'#description' => t(''),
+		'#size' => 60,
+		'#default_value' => $record['product_type_exc'],
+	);
+	$form['netproduct']['site_name'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Site Name'),
+		'#description' => t('Site name (lowercase) for getting the products from netForum API (Ex. abc)'),
+		'#required' => TRUE,
+		'#size' => 60,
+		'#default_value' => $record['site_name'],
+	);
+	$form['netproduct']['stored_product'] = array(
+		'#type' =>'checkbox',
+		'#title' => t('Only store products which should be posted online?'),
+		'#default_value' => $record['stored_product'],
+	);
+	$form['netproduct']['remove_fromdate'] = array(
+		'#type' => 'checkbox',
+		'#title' => t('Ignore remove from web date?'),
+		'#default_value' => $record['remove_fromdate'],
+	);
+
+	$form['submit_save_settings'] = array(
+		'#type' => 'submit',
+		'#value' => t('Save Settings'),
+	);
+	$form['submit_sync_now'] = array(
+		'#type' => 'submit',
+		'#value' => t('Sync Now'),
+		'#submit' => array('netproductsync_sync_now_submit'),
+	);
+	$form['submit_clear_database'] = array(
+		'#type' => 'submit',
+		'#value' => t('Clear all products from database'),
+		'#submit' => array('netproductsync_clear_form_submit'),
+	);
+	
+	return $form;
+}
+
+/**
+ * Submit handler/function to the form.
+ *
+ * This will save the settings for the respective form;
+ * @see netforum_productsync_settings();
+ */
+function netforum_productsync_settings_submit($form, &$form_state) {
+	
+	$created = date("Y-m-d H:i");
+	$sync_frequency = $form_state['values']['sync_frequency'];
+	$product_type_inc = $form_state['values']['product_type_inc'];
+	$product_type_exc = $form_state['values']['product_type_exc'];
+	$site_name = $form_state['values']['site_name'];
+	$stored_product = $form_state['values']['stored_product'];
+	$remove_fromdate = $form_state['values']['remove_fromdate'];
+	
+	// Here you can update your custom form values into your custom table.
+	db_update('fs_netproduct_setting')
+	->fields(array(
+		'sync_frequency' => $sync_frequency,
+		'product_type_inc' => $product_type_inc,
+		'product_type_exc' => $product_type_exc,
+		'site_name' => $site_name,
+		'stored_product' => $stored_product,
+		'remove_fromdate' => $remove_fromdate,
+		'created' => $created,
+		'status' => '1'
+	))
+	->condition ('fs_netproduct_setting.id', 1)
+	->execute();
+	drupal_set_message("Settings has been saved successfully.");
+}
+
+/**
+ * Implementation of hook_cron().
+ *
+ * The function that call cron job after a set time interval automatically.
+ * Need to save the last run cron details on that basis we need to call next cron.
+ */
+function netproductsync_cron() {
+	$created = date("Y-m-d h:i");
+	$query = db_select('fs_netproduct_setting')->fields('fs_netproduct_setting',array('sync_frequency','created','crontime','status'))->condition('id', 1);
+	$record = $query->execute()->fetchAssoc();
+
+	if ($record['sync_frequency'] == "Hourly") {
+		$for_hour =  60 * 60; //Second * Minute [You can d0 60 * 60 * 2 for running cron in every two hours
+		$date = date("Y-m-d H:i:s", time());
+		if ((time() - variable_get('for_hour ', 0)) > $for_hour ) { 
+			variable_set('for_hour ', time());
+			db_update('fs_netproduct_setting')->fields(array('crontime' => $created,'status' => 1))->condition('id',1)->execute();
+			netproductsync_sync_now_submit();
+		}
+	} elseif ($record['sync_frequency'] == "Twice Daily") {
+		$for_hour =  60 * 60 * 6; //Second * Minute [You can d0 60 * 60 * 2 for running cron in every two hours
+		$date = date("Y-m-d H:i:s", time());
+		if ((time() - variable_get('for_hour ', 0)) > $for_hour ) { 
+			variable_set('for_hour ', time());
+			db_update('fs_netproduct_setting')->fields(array('crontime' => $created,'status' => 1))->condition('id',1)->execute();
+			netproductsync_sync_now_submit();
+		}
+	} elseif ($record['sync_frequency'] == "Daily") {
+		$for_hour =  60 * 60 * 24; //Second * Minute [You can d0 60 * 60 * 2 for running cron in every two hours
+		$date = date("Y-m-d H:i:s", time());
+		if ((time() - variable_get('for_hour ', 0)) > $for_hour ) { 
+			variable_set('for_hour ', time());
+			db_update('fs_netproduct_setting')->fields(array('crontime' => $created,'status' => 1))->condition('id',1)->execute();
+			netproductsync_sync_now_submit();
+		}
+	} elseif ($record['sync_frequency'] == "Weekly") {
+		$for_hour =  60 * 60 * 168; //Second * Minute [You can d0 60 * 60 * 2 for running cron in every two hours
+		$date = date("Y-m-d H:i:s", time());
+		if ((time() - variable_get('for_hour ', 0)) > $for_hour ) { 
+			variable_set('for_hour ', time());
+			db_update('fs_netproduct_setting')->fields(array('crontime' => $created,'status' => 1))->condition('id',1)->execute();
+			netproductsync_sync_now_submit();
+		}
+	}
+}
+
+/**
+ * Function is used to convert SimpleXMLElement object into array.
+ * THis will convert the nested object into an array.
+ */
+function xml2array($xml) {
+    $arr = array();
+    foreach ($xml as $element) {
+        $tag = $element->getName();
+        $e = get_object_vars($element);
+        if (!empty($e)) {
+            $arr[$tag] = $element instanceof SimpleXMLElement ? xml2array($element) : $e;
+        } else {
+            $arr[$tag] = trim($element);
+        }
+    }
+    return $arr;
+}
+
+/**
+ * Submit handler/function for sync now button.
+ *
+ * This will sync the products from netForum server with SOAP API call;
+ */
+function netproductsync_sync_now_submit() {
+	global $count;
+
+	$created = date("Y-m-d h:i");
+	$wsdlurl = variable_get('netauth_wsdl_url');
+	$username = variable_get('netauth_user');
+	$password = variable_get('netauth_pass');
+	$site_name = db_query('SELECT site_name from {fs_netproduct_setting} WHERE id = :id', [':id' => '1'])->fetchField();
+	
+	$response = array();
+	$client = new SoapClient($wsdlurl, array('trace' => 1));
+	$result = $client->__soapCall("Authenticate", array( "params" => array("userName" => $username, "password" => $password)), null, null, $response);
+	$getResult = $result->AuthenticateResult;
+	$token = $response['AuthorizationToken']->Token;
+
+	// Make SoapHeader to call for product list
+	if ($response != null || isset($response['AuthorizationToken']) || isset($response['AuthorizationToken']->Token)){
+		$token = $response['AuthorizationToken']->Token;
+	}
+	$header = new SoapHeader($getResult, "AuthorizationToken", array("Token" => $token));
+
+	$namespace = "http://www.avectra.com/OnDemand/2005/";
+	$startDate = "";
+	$dbquery = db_select('fs_netproduct_setting');
+	$dbquery->fields('fs_netproduct_setting',array('sync_frequency','product_type_inc','product_type_exc','stored_product'));
+	$dbquery->condition('id', 1);
+	$dbrecord = $dbquery->execute()->fetchAssoc();
+	$include_type = $dbrecord['product_type_inc'];
+	$result2 = $client->__soapCall("GetActiveProductList",array( "GetActiveProductList" => array("szRecordDate" =>  $startDate)), null, $header, $proResponse);
+	$activeProducts = new SimpleXMLElement($result2->GetActiveProductListResult->any);
+	$array = json_decode(json_encode((array)$activeProducts), TRUE);
+	$arr_prd = $array['Result'];
+	foreach ($arr_prd as $prd_mer) {
+		if ($prd_mer['prd_type'] == "Merchandise") {
+			$arr_product[] = $prd_mer;
+		}
+	}
+
+	// Make SoapHeader to call for product description html
+	$token2 = $proResponse['AuthorizationToken']->Token;
+	if ($proResponse != null || isset($proResponse['AuthorizationToken']) || isset($proResponse['AuthorizationToken']->Token)){
+		$token2 = $proResponse['AuthorizationToken']->Token;
+	}
+	$header = new SoapHeader($namespace, "AuthorizationToken", array("Token" => $token2));
+	
+	// Call SOAP API for getting prd_description_html filed
+	$result3 = $client->__soapCall("GetProductListByType",array( "GetProductListByType" => array("typeCode"=>"Merchandise","szRecordDate"=>$startDate)), null, $header, $prodResponse);
+	$products_for_desc = new SimpleXMLElement($result3->GetProductListByTypeResult->any);
+	$arr_desc = json_decode(json_encode((array)$products_for_desc), TRUE);
+	$arr_prd_desc = $arr_desc['Result'];
+	
+	// Saving prd_description_html data into database
+	$i = 0;
+	foreach ($arr_prd_desc as $prod_desc) {
+		$i++;
+		$arr_product_desc["prd_key"] = $prod_desc["prd_key"];
+		$arr_product_desc["prd_description_html"] = strip_tags($prod_desc["prd_description_html"],'<span><br><div><p><a><strong>');
+		
+		$select = db_select('fs_netproduct_detaildesc')->fields('fs_netproduct_detaildesc',array('prd_key'))
+				->condition ('fs_netproduct_detaildesc.prd_key', $arr_product_desc["prd_key"]);
+		$selected = $select->execute()->fetchAssoc();
+
+		if ($selected['prd_key'] == $arr_product_desc['prd_key']) {
+			db_update('fs_netproduct_detaildesc')->fields(array('prd_key'=>$arr_product_desc["prd_key"],'prd_description_html'=>$arr_product_desc["prd_description_html"]))->condition('fs_netproduct_detaildesc.prd_key', $arr_product_desc['prd_key'])->execute();
+		} else {
+			db_insert('fs_netproduct_detaildesc')->fields(array('prd_key'=>$arr_product_desc["prd_key"],'prd_description_html'=>$arr_product_desc["prd_description_html"]))->execute();
+		}
+		if(($i %20)==0) { sleep(3); }
+	}
+	
+	// Saving sync active product list record into database
+	$data = array();
+	$count = 0;
+	foreach($arr_product as $product) {
+		// if($count == 40) break;
+		$mer_category = is_array($product['mer_category']) ? implode(",", $product['mer_category']) : $product['mer_category']; 
+		$prd_post_to_web_date = is_array($product['prd_post_to_web_date']) ? implode(",", $product['prd_post_to_web_date']) : $product['prd_post_to_web_date'];
+		$prd_remove_from_web_date = is_array($product['prd_remove_from_web_date']) ? implode(",", $product['prd_remove_from_web_date']) : $product['prd_remove_from_web_date'];
+		$prd_quantity_on_hand = is_array($product['prd_quantity_on_hand']) ? implode(",", $product['prd_quantity_on_hand']) : $product['prd_quantity_on_hand'];
+		$prd_start_date =  is_array($product['prd_start_date']) ? implode(",", $product['prd_start_date']) : $product['prd_start_date'];
+		$prd_end_date = is_array($product['prd_end_date']) ? implode(",", $product['prd_end_date']) : $product['prd_end_date'];
+		$prd_feature_start_date = is_array($product['prd_feature_start_date']) ? implode(",", $product['prd_feature_start_date']) : $product['prd_feature_start_date'];
+		$prd_feature_end_date = is_array($product['prd_feature_end_date']) ? implode(",", $product['prd_feature_end_date']) : $product['prd_feature_end_date'];
+		$prd_show_as_new_from = is_array($product['prd_show_as_new_from']) ? implode(",", $product['prd_show_as_new_from']) : $product['prd_show_as_new_from'];
+		$prd_show_as_new_until = is_array($product['prd_show_as_new_until']) ? implode(",", $product['prd_show_as_new_until']) : $product['prd_show_as_new_until'];
+		$prd_viewable_to_all_flag = is_array($product['prd_viewable_to_all_flag']) ? implode(",", $product['prd_viewable_to_all_flag']) : $product['prd_viewable_to_all_flag'];
+		$prd_order = is_array($product['prd_order']) ? implode(",", $product['prd_order']) : $product['prd_order'];
+		$prd_change_date = is_array($product['prd_change_date']) ? implode(",", $product['prd_change_date']) : $product['prd_change_date'];
+		$prd_description = is_array($product['prd_description']) ? implode(",", $product['prd_description']) : $product['prd_description'];
+		$prd_key_words = is_array($product['prd_key_words']) ? implode(",", $product['prd_key_words']) : $product['prd_key_words'];
+
+		// Getting product images with cURL
+		$netforunurl = parse_url($wsdlurl);
+		$clientname = $site_name;
+		$url = "https://".$netforunurl['host']."/public/DocumentGenerate.aspx?productKey=".$product['prd_key']."&client=".$clientname;
+		$image_url = "https://".$netforunurl['host'].curlRequest($url);
+		$img_url = parse_url($image_url);
+		$img_path = $img_url['path'];
+		$file_name = explode("/", $img_path);
+		$file_split = $file_name[5];
+		$img_name = explode(".", $file_split);
+		if ($img_name[0] == '00000000-0000-0000-0000-000000000000') {
+			$product_image = "";
+		} else {
+			$product_image = $file_split;
+		}
+		// End
+
+		// Getting product price with calling SOAP API
+		if ($count == 0) {
+			if ($prodResponse != null || isset($prodResponse['AuthorizationToken']) || isset($prodResponse['AuthorizationToken']->Token)){
+				$pro_token = $prodResponse['AuthorizationToken']->Token;
+			}
+			$price_header = new SoapHeader($namespace, "AuthorizationToken", array("Token" => $pro_token));
+		} else {
+			if ($priceResponse != null || isset($priceResponse['AuthorizationToken']) || isset($priceResponse['AuthorizationToken']->Token)){
+				$pro_token = $priceResponse['AuthorizationToken']->Token;
+			}
+			$price_header = new SoapHeader($namespace, "AuthorizationToken", array("Token" => $pro_token));
+		}
+		$price_result = $client->__soapCall("GetPricesByProductKey",array( "params" => array("prdkey" =>  $product['prd_key'])), null, $price_header, $priceResponse);
+		$price_data = new SimpleXMLElement($price_result->GetPricesByProductKeyResult->any);
+		$price_array = json_decode(json_encode((array)$price_data), TRUE);
+		if (in_array(@$price_array['Result'], $price_array)) {
+			$foundDefaultPrice = false;
+			$arr_attr = $price_array['@attributes']['recordReturn'];
+			if ($arr_attr == 1) {
+				$price_flag = $price_array['Result']['ppr_listing_price_flag'];
+				if ($price_flag == 1) {
+					$product_price_mem_cost = $price_array['Result']['ppr_mem_cost'];
+					$product_price_non_cost = $price_array['Result']['ppr_non_cost'];
+					$foundDefaultPrice = true;
+				}
+			} else {
+				$collection = $price_array['Result'];
+				foreach ($collection as $value) {
+					$val_flag = $value['ppr_listing_price_flag'];
+					if ($val_flag == 1) {
+						$product_price_mem_cost = $value['ppr_mem_cost'];
+						$product_price_non_cost = $value['ppr_non_cost'];
+						$foundDefaultPrice = true;
+						break;
+					}
+				}
+			}
+			if($foundDefaultPrice === false) {
+				$product_price_mem_cost = '';
+				$product_price_non_cost = '';
+			}
+		} else {
+			$product_price_mem_cost = '';
+			$product_price_non_cost = '';
+		}
+		// End
+		
+		$data = array(
+			'prd_key' => (string) $product['prd_key'],
+			'prd_type' => (string) $product['prd_type'],
+			'prd_code' => (string) $product['prd_code'],
+			'prd_name' => (string) $product['prd_name'],
+			'prd_img_name' => (string) $product_image,
+			'prd_mem_price' => (string) $product_price_mem_cost,
+			'prd_non_price' => (string) $product_price_non_cost,
+			'mer_category' => (string) $mer_category,
+			'prd_inactive_flag' => (string) $product['prd_inactive_flag'],
+			'prd_post_online_flag' => (string) $product['prd_post_online_flag'],
+			'prd_post_to_web_date' => (string) $prd_post_to_web_date,
+			'prd_remove_from_web_date' => (string) $prd_remove_from_web_date,
+			'prd_taxable_flag' => (string) $product['prd_taxable_flag'],
+			'prd_shippable_flag' => (string) $product['prd_shippable_flag'],
+			'prd_inventory_flag' => (string) $product['prd_inventory_flag'],
+			'prd_quantity_on_hand' => (string) $prd_quantity_on_hand,
+			'prd_quantity_available' => (string) $product['prd_quantity_available'],
+			'prd_quantity_commited' => (string) $product['prd_quantity_commited'],
+			'prd_allow_waitlist_oversale_flag' => (string) $product['prd_allow_waitlist_oversale_flag'],
+			'prd_start_date' => (string) $prd_start_date,
+			'prd_end_date' => (string) $prd_end_date,
+			'prd_feature_start_date' => (string) $prd_feature_start_date,
+			'prd_feature_end_date' => (string) $prd_feature_end_date,
+			'prd_show_as_new_from' => (string) $prd_show_as_new_from,
+			'prd_show_as_new_until' => (string) $prd_show_as_new_until,
+			'prd_members_only' => (string) $product['prd_members_only'],
+			'prd_viewable_to_all_flag' => (string) $prd_viewable_to_all_flag,
+			'prd_order' => (string) $prd_order,
+			'prd_add_date' => (string) $product['prd_add_date'],
+			'prd_change_date' => (string) $prd_change_date,
+			'prd_description' => (string) $prd_description,
+			'prd_key_words' => (string) $prd_key_words,
+			'sync_date' => (string) $created,
+			'status' => 1,
+		);
+
+		$setting_update = db_update('fs_netproduct_setting')->fields(['crontime' => $created])->condition('id', 1)->execute();
+		$select = db_select('fs_netproduct_sync')->fields('fs_netproduct_sync',array('prd_key','status'))
+				->condition ('fs_netproduct_sync.prd_key', $data['prd_key']);
+		$selected = $select->execute()->fetchAssoc();
+		
+		if ($selected['prd_key'] == $data['prd_key']) {
+			db_update('fs_netproduct_sync')->fields($data)->condition('fs_netproduct_sync.prd_key', $data['prd_key'])->execute();
+		} else {
+			db_insert('fs_netproduct_sync')->fields($data)->execute();
+		}
+		$count++;
+		if(($count%20)==0) { sleep(3); }
+	}
+	drupal_set_message("Product has been sync and saved successfully.");
+}
+
+/**
+ * Submit handler/function for clear all sync product now button.
+ *
+ * This will not exactly delete the all sync product from database.
+ * The callback function is for to change the status of all the sync product and make it disable.
+ */
+function netproductsync_clear_form_submit() {
+	db_update('fs_netproduct_sync')->fields(array('status' => 0,))->execute();
+	drupal_set_message("All product clear successfully from database.");
+}
+
+/**
+ * CURL handler/function for getting the data through jason from url
+ */
+function curlRequest($url) {
+	$ch = curl_init($url);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+	curl_setopt($ch, CURLOPT_HEADER, TRUE); // We'll parse redirect url from header.
+	curl_setopt($ch, CURLOPT_FOLLOWLOCATION, FALSE); // We want to just get redirect url but not to follow it.
+	$response = curl_exec($ch);
+	preg_match_all('/^Location:(.*)$/mi', $response, $matches);
+	$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+	if($httpCode == 404) {
+	    return $not_found = "not_found";
+	}
+	curl_close($ch);
+	!empty($matches[1]) ? $resurl = trim($matches[1][0]) : 'No redirect found';
+	return $resurl;
+}
+
+/**
+ *
+ * param string $url
+ *    Full url to file to download
+ * param string $uri
+ *    Drupal uri of where to save file public://archive/test.pdf
+ * param int $save_mode
+ *    File save mode from drupal core, ex FILE_EXISTS_REPLACE
+ */
+function download_external_file($url, $uri, $save_mode = FILE_EXISTS_RENAME, $manage_file = TRUE) {
+	$url_info = parse_url($url);
+	$url_path_info = pathinfo($url_info['path']);
+
+	//This helps with filenames with spaces
+	$url = $url_info['scheme'] . '://' . $url_info['host']  . $url_path_info['dirname'] .'/'. rawurlencode($url_path_info['basename']);
+
+	//Need to remove the filename from the uri
+	$uri_target = file_uri_target($uri);
+	$uri_scheme = file_uri_scheme($uri);
+	$uri_path_info = pathinfo($uri_target);
+	$directory = file_stream_wrapper_uri_normalize($uri_scheme . "://" . $uri_path_info['dirname']);
+
+	if(file_prepare_directory($directory, FILE_CREATE_DIRECTORY)) {
+		$drupal_result = drupal_http_request($url);
+		if(!empty($drupal_result->data)) {
+			$path = file_stream_wrapper_uri_normalize($uri);
+			if($manage_file) {
+				$new_file = file_save_data($drupal_result->data, $path, $save_mode);
+			} else {
+				return file_unmanaged_save_data($drupal_result->data, $path, $save_mode);
+			}
+		} else {
+			drupal_set_message("Error downloading file, no data recieved for " . $url);
+			return FALSE;
+		}
+	} else {
+		drupal_set_message("Could not create directory");
+	}
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function netproductsync_block_view($delta = '') {
+	$block = array();
+
+	switch ($delta) {
+		case 'net_product_sync':
+			$block['subject'] = '';
+			$block['content'] = _netproductsync_content();
+			break;
+		case 'net_product_detail':
+			$block['subject'] = '';
+			$block['content'] = _netproduct_detail_content();
+			break;	
+	}
+	return $block;
+}
+
+/**
+ * Implements hook_block_view for product list/store page().
+ */
+function _netproductsync_content() {
+	global $base_url;   // Will point to http://www.example.com
+
+	drupal_add_css(drupal_get_path('module', 'netproductsync') . '/css/netproduct.css');
+	drupal_add_css(drupal_get_path('module', 'netproductsync') . '/js/jquery.dataTables.min.css');
+	drupal_add_js(drupal_get_path('module', 'netproductsync') . '/js/jquery-1.12.3.min.js');
+	drupal_add_js(drupal_get_path('module', 'netproductsync') . '/js/jquery.dataTables.min.js');
+	drupal_add_js(
+		'jQuery.noConflict();
+		jQuery(window).ready(function() {
+			jQuery("#pro-list").DataTable( {
+				"pagingType": "simple_numbers",
+				"lengthMenu" : [12, 36, 60, 84],
+				"pageLength" : 12,
+			});
+		});',
+		array(
+			'type' => 'inline',
+			'scope' => 'footer',
+			'group' => JS_THEME,
+			'weight' => 5,
+		)
+	);
+
+	$cdate = strtotime(date("m/d/Y h:i:s A"));
+	$getParam = drupal_get_query_parameters();
+	if (empty($getParam)) {
+		$cat = "";
+	} else {
+		$cat = base64_decode($getParam['cat']);
+	}
+    if (empty($getParam)) {
+    	$cat = "All Products";
+    	$query = db_select('fs_netproduct_sync','n1')
+				->fields('n1',array('pid','prd_key','prd_img_name','prd_name','prd_description','mer_category','prd_mem_price','prd_non_price','prd_members_only','status'))
+				->condition('status', 1);
+		$result = $query->execute()->fetchAll();
+    } elseif ($cat == "featured") {
+    	$cat = "Featured Products";
+    	$curr_date = base64_decode($getParam['cdate']);
+    	$query = db_select('fs_netproduct_sync','n1')
+    			->fields('n1',array('pid','prd_key','prd_img_name','prd_name','prd_description','mer_category','prd_mem_price','prd_non_price','prd_members_only','prd_feature_start_date','prd_feature_end_date','status'))
+    			->condition('status', 1);
+		$output = $query->execute()->fetchAll();
+		$arr_data_val = array();
+		foreach ($output as $date_val) {
+			$expire_date = strtotime($date_val->prd_feature_end_date);
+			if (!empty($expire_date)) {
+				if ($cdate <= $expire_date) {
+					$arr_data_val[] = $date_val;
+				}
+			}
+		}
+		$result = $arr_data_val;
+	} else {
+    	$query = db_select('fs_netproduct_sync','n1')
+				->fields('n1',array('pid','prd_key','prd_img_name','prd_name','prd_description','mer_category','prd_mem_price','prd_non_price','prd_members_only','status'))
+				->condition('mer_category', $cat)
+				->condition('status', 1);
+		$result = $query->execute()->fetchAll();
+    }
+
+	$wsdlurl = variable_get('netauth_wsdl_url');
+	$clientname = db_query('SELECT site_name from {fs_netproduct_setting} WHERE id = :id', [':id' => '1'])->fetchField();
+	$netforunurl = parse_url($wsdlurl);
+	
+	$output = '<div class="row product_list">
+					<div class="product_list_right">
+						<div class="brand">Filter By Category</div>
+						<ul>';
+						$referal_url = $_SERVER['REQUEST_URI'];
+						if (strpos($referal_url, '?') === false) {
+							$sel = "red";
+						} else {
+							$sel = "";
+						}
+	$output .= '			<li><a style="color:'.$sel.'" href="'.$base_url.'/products">>&nbsp;&nbsp;All</a></li>';
+						$selcol = ($cat == "Featured Products") ? "red" : "";
+	$output .= '			<li><a style="color:'.$selcol.'" href="'.$base_url.'/products?cat='.base64_encode("featured").'&cdate='.base64_encode($cdate).'">>&nbsp;&nbsp;Featured Products</a></li>';
+						$cat_query = db_select('fs_netproduct_sync','t1')->fields('t1',array('mer_category'))->condition('status', 1)->distinct()->execute();
+						$cat_result = $cat_query->fetchAll();
+						$array_cat = array();
+						$cat_array = json_decode(json_encode((array)$cat_result), TRUE);
+						sort($cat_array);
+						foreach ($cat_array as $categories) {
+							if ($categories["mer_category"] != "Memberships") {
+								$array_cat[] = $categories;
+							}
+						}
+						$i = 1;
+						foreach ($array_cat as $category) {
+							$cate_name = $category['mer_category'];
+							if ($category['mer_category'] == $cat) {
+								$selected = "red";
+							} else {
+								$selected = "";
+							}
+	$output .= '			<li><a style="color:'.$selected.'" href="'.$base_url.'/products?cat='.base64_encode($cate_name).'">>&nbsp;&nbsp;'.$cate_name.'</a></li>';
+							$i++;
+						}
+	$output .= '		</ul>
+					</div>
+					<table id="pro-list">
+						<thead>
+					        <tr><th>'.$cat.'</th></tr>
+					    </thead>
+					    <tbody>';
+					    foreach ($result as $record) {
+					    	if (empty($record->prd_img_name)) {
+								$pro_img = "sites/all/modules/netproductsync/dummy.png";
+							} else {
+								$url = "https://".$netforunurl['host']."/public/DocumentGenerate.aspx?productKey=".$record->prd_key."&client=".$clientname."&size=f";
+								$pro_img = $url;
+								if (!$pro_img) {
+									$pro_img = "sites/all/modules/netproductsync/dummy.png";
+								} else {
+									$url = "https://".$netforunurl['host']."/public/DocumentGenerate.aspx?productKey=".$record->prd_key."&client=".$clientname."&size=f";
+									$pro_img = $url;
+								}
+							}
+							$name = $record->prd_name;
+							$desc_str = $record->prd_description;
+							$mem_price = ($record->prd_mem_price == "" || $record->prd_mem_price == "0.0000") ? "$0" : "$".$record->prd_mem_price;
+							if($record->prd_members_only == 1) { 
+								$non_price = "N/A";
+							} else { 
+								$non_price = ($record->prd_non_price == "" || $record->prd_non_price == "0.0000") ? "$0" : "$".$record->prd_non_price;
+							}
+	$output .= '			<tr class="col-md-6">
+					            <td>
+					            	<div class="thumbnail">
+										<div class="imgdv">
+											<a href="'.$base_url.'/product?pkey='.$record->prd_key.'&cat='.$record->mer_category.'">
+												<img src="'.$pro_img.'" />
+											</a>
+										</div>
+										<div class="caption">
+											<h4>
+												<a href="'.$base_url.'/product?pkey='.$record->prd_key.'&cat='.$record->mer_category.'">'.$name.'</a>
+											</h4>';
+											if((!empty($record->prd_description))) {
+	$output .= '							<p>'.$desc_str.'</p>';
+											} else { }										
+	$output .= '							<div class="bottom-content">
+												<div class="price">
+													<div class="price-wrp">
+														<div class="price-big">Member Cost</div>
+														<div class="price-small">'.$mem_price.'</div>
+													</div>
+													<div class="price-wrp">
+														<div class="price-big">Non-member Cost</div>
+														<div class="price-small">'.$non_price.'</div>
+													</div>
+												</div>
+												<div class="btn-wrp">
+													<a href="'.$base_url.'/product?pkey='.$record->prd_key.'&cat='.$record->mer_category.'" class="btn btn-md btn-primary">
+														View Details/Order
+													</a>
+												</div>
+											</div>	
+										</div>
+									</div>
+								</td>
+					        </tr>';
+					    }
+	$output .= '		</tbody>
+					</table>
+				</div>
+				<div style="clear:both"></div>';
+
+	// $output = t('Hello Vinek...!');
+	return $output;
+}
+
+/**
+ * Implements hook_block_view for product detail page().
+ */
+function _netproduct_detail_content() {
+	global $base_url;   // Will point to http://www.example.com
+	global $user;
+
+	drupal_add_css(drupal_get_path('module', 'netproductsync') . '/css/netproduct.css');
+	
+	$member_type = next($user->roles);
+	$cdate = strtotime(date("m/d/Y h:i:s A"));
+	$request_url = $_SERVER['REQUEST_URI'];
+	if (strpos($request_url, '?') === false) {
+		drupal_goto($base_url."/products");
+	} else {
+		$getParam = drupal_get_query_parameters();
+		if (empty($getParam)) {
+			$pkey = "";
+			$cat = "";
+		} else {
+			$pkey = $getParam['pkey'];
+			$cat = $getParam['cat'];
+		}
+
+		$query = db_select('fs_netproduct_sync','n1');
+		$query->join('fs_netproduct_detaildesc', 'n2', 'n1.prd_key = n2.prd_key');
+		$query->fields('n1',array('prd_key','prd_img_name','prd_name','prd_description','mer_category','prd_mem_price','prd_non_price','prd_shippable_flag','prd_members_only','prd_shippable_flag','prd_key_words','prd_dowanload_url'));
+		$query->fields('n2',array('prd_description_html'));
+		$query->condition('n1.prd_key', $pkey);
+		$result = $query->execute()->fetchAll();
+		
+		$wsdlurl = variable_get('netauth_wsdl_url');
+		$clientname = db_query('SELECT site_name from {fs_netproduct_setting} WHERE id = :id', [':id' => '1'])->fetchField();
+		$netforunurl = parse_url($wsdlurl);
+		$url = "https://".$netforunurl['host']."/public/DocumentGenerate.aspx?productKey=".$result[0]->prd_key."&client=".$clientname."&size=f";
+
+	    if (empty($result[0]->prd_img_name)) {
+			$pro_img = "sites/all/modules/netproductsync/dummy.png";
+		} else {
+			$pro_img = $url;
+			if (!$pro_img) {
+				$pro_img = "sites/all/modules/netproductsync/dummy.png";
+			} else {
+				$pro_img = $url;
+			}
+		}
+		$shippble = ($result[0]->prd_shippable_flag == 1) ? "Yes" : "No";
+		$mem_price = ($result[0]->prd_mem_price == "" || $result[0]->prd_mem_price == "0.0000") ? "$0" : "$".$result[0]->prd_mem_price;
+		if($result[0]->prd_members_only == 1) { 
+			$non_price = "N/A";
+		} else { 
+		 	$non_price = ($result[0]->prd_non_price == "" || $result[0]->prd_non_price == "0.0000") ? "$0" : "$".$result[0]->prd_non_price;
+		}
+
+		$referal_url = $_SERVER['HTTP_REFERER'];
+		if (strpos($referal_url, '?cat=QWxs') !== false) {
+			$back_url = "/products?cat=QWxs";
+		} elseif (strpos($referal_url, '?') === false) {
+			$back_url = "/products";
+		} elseif (strpos($referal_url, '?cat=ZmVhdHVyZWQ=') !== false) {
+			$back_url = "/products?cat=ZmVhdHVyZWQ=&cdate=".base64_encode($cdate);
+		} else {
+			$back_url = "/products?cat=".base64_encode($cat);
+		}
+
+		$output = ' <div class="row product_list">
+						<div class="product_list_right">
+							<div class="brand">Filter By Category</div>
+							<ul>';
+							$referal_url = $_SERVER['REQUEST_URI'];
+							if (strpos($referal_url, '?') === false) {
+								$sel = "red";
+							} else {
+								$sel = "";
+							}
+		$output .= '			<li><a style="color:'.$sel.'" href="'.$base_url.'/products">>&nbsp;&nbsp;All</a></li>';
+							$selcol = ($cat == "featured") ? "red" : "";
+		$output .= '			<li><a style="color:'.$selcol.'" href="'.$base_url.'/products?cat='.base64_encode("featured").'&cdate='.base64_encode($cdate).'">>&nbsp;&nbsp;Featured Products</a></li>';
+							$cat_query = db_select('fs_netproduct_sync','t1')->fields('t1',array('mer_category'))->condition('status', 1)->distinct()->execute();
+							$cat_result = $cat_query->fetchAll();
+							$array_cat = array();
+							$cat_array = json_decode(json_encode((array)$cat_result), TRUE);
+							sort($cat_array);
+							foreach ($cat_array as $categories) {
+								if ($categories["mer_category"] != "Memberships") {
+									$array_cat[] = $categories;
+								}
+							}
+							$i = 1;
+							foreach ($array_cat as $category) {
+								$cate_name = $category['mer_category'];
+								if ($category['mer_category'] == $cat) {
+									$selected = "red";
+								} elseif ($cat == "All") {
+									$selected = ($i == 1) ? "red" : "";
+								} else {
+									$selected = "";
+								}
+		$output .= '			<li><a style="color:'.$selected.'" href="'.$base_url.'/products?cat='.base64_encode($cate_name).'">>&nbsp;&nbsp;'.$cate_name.'</a></li>';
+								$i++;
+							}
+		$output .= '		</ul>
+						</div>
+						<div class="title-head">
+							<span>'.$result[0]->prd_name.'</span>
+							<a href="'.$back_url.'">
+								<button class="btn btn-success">Back</button>
+							</a>	
+						</div>	
+						<div class="product-detail">';
+							if ($user->uid == 0) {
+		$output .= '		<div>
+								<span>Members : To take advantage of member pricing, please '.l("login","user/login",array('query' => drupal_get_destination())).' to your CoSN account. To learn more about CoSN membership please <a href="mailto:membership@cosn.org">email</a> us.</span>
+							</div>
+							<p></p>';
+							} else { }
+		$output .= '		<div class="detail-page-img">
+								<img src="'.$pro_img.'" />
+							</div>';
+							if (empty($result[0]->prd_description_html) || ($result[0]->prd_description_html == "null")) { 
+								if (empty($result[0]->prd_description) || ($result[0]->prd_description == "null")) { } else {
+		$output .= '		<div class="detail-desc">
+								<span class="first-col">Description</span>
+								<span class="sec-col">'.$result[0]->prd_description.'</span>
+							</div>';
+								}
+							} else {
+		$output .= '		<div class="detail-desc">
+								<span class="first-col">Description</span>
+								<span class="sec-col">'.str_replace('if (!NREUMQ.f) {NREUMQ.f=function() {NREUMQ.push(["load",new Date().getTime()]);var e=document.createElement("script"); e.type="text/javascript"; e.src=(("http:"===document.location.protocol)?"http:":"https:") + "//" + "js-agent.newrelic.com/nr-100.js"; document.body.appendChild(e);if(NREUMQ.a)NREUMQ.a();};NREUMQ.a=window.onload;window.onload=NREUMQ.f;};NREUMQ.push(["nrfj","bam.nr-data.net","5ba5936eb8","1790685,1824814","YQAHY0RZXEZWVxdaClhKJGRmF1tCUlZMVQpECBYYUkFcVFpdAFYBXxEIWFJZXhtWRxNL",0,3853,new Date().getTime(),"D19F937C38AB4958","","","",""]);', "", $result[0]->prd_description_html).'</span>
+							</div>';
+							}
+		$output .= '		<div style="clear:both"></div>
+							<div class="access-detail-desc">';
+								if ($user->uid && (($member_type == "nfmember") || ($member_type == "benefits_lrginst") || ($member_type == "administrator"))) {
+		$output .= '			<div class="mem-access">';
+									if (($result[0]->prd_mem_price == "0.0000") || ($result[0]->prd_mem_price == "")) { 
+										if (empty($result[0]->prd_dowanload_url)) {
+		$output .= '				<span><a class="btn btn-md btn-primary">Member Access</a></span>';
+										} else {
+		$output .= '				<span><a href="'.$result[0]->prd_dowanload_url.'" target="_blank" class="btn btn-md btn-primary">Member Access</a></span>';
+										}
+									} else {
+		$output .= '				<span><a href="https://netforum.avectra.com/eweb/shopping/shopping.aspx?site='.$clientname.'&webcode=shopping&prd_key='.$result[0]->prd_key.'&ssoToken='.$_SESSION ['netforum_sso'].'" target="_blank" class="btn btn-md btn-primary">Member Access</a></span>';
+									}
+		$output .= '				<span class="mem-access-price">'.$mem_price.'</span>
+								</div>
+								<div class="nonmem-access">';
+									if ($result[0]->prd_members_only == 1) {
+		$output .= '				<span><a href="https://netforum.avectra.com/eweb/shopping/shopping.aspx?site='.$clientname.'&webcode=shopping&prd_key='.$result[0]->prd_key.'&ssoToken='.$_SESSION ['netforum_sso'].'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';
+									} elseif (($result[0]->prd_non_price == "0.0000") || ($result[0]->prd_non_price == "")) { 
+										if (empty($result[0]->prd_dowanload_url)) {
+		$output .= '				<span><a class="btn btn-md btn-primary">Non-Member Access</a></span>';
+										} else {
+		$output .= '				<span><a href="'.$result[0]->prd_dowanload_url.'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';									
+										}
+									} else {
+		$output .= '				<span><a href="https://netforum.avectra.com/eweb/shopping/shopping.aspx?site='.$clientname.'&webcode=shopping&prd_key='.$result[0]->prd_key.'&ssoToken='.$_SESSION ['netforum_sso'].'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';
+									}
+		$output .= '				<span class="nonmem-access-price">'.$non_price.'</span>
+								</div>';
+								} else {
+		$output .= '			<div class="nonmem-access-only">';
+									if ($result[0]->prd_members_only == 1) {
+		$output .= '				<span><a href="https://netforum.avectra.com/eweb/shopping/shopping.aspx?site='.$clientname.'&webcode=shopping&prd_key='.$result[0]->prd_key.'&ssoToken='.$_SESSION ['netforum_sso'].'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';
+									} elseif (($result[0]->prd_non_price == "0.0000") || ($result[0]->prd_non_price == "")) { 
+										if (empty($result[0]->prd_dowanload_url)) {
+		$output .= '				<span><a class="btn btn-md btn-primary">Non-Member Access</a></span>';
+										} else {
+		$output .= '				<span><a href="'.$result[0]->prd_dowanload_url.'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';									
+										}
+									} else {
+		$output .= '				<span><a href="https://netforum.avectra.com/eweb/shopping/shopping.aspx?site='.$clientname.'&webcode=shopping&prd_key='.$result[0]->prd_key.'&ssoToken='.$_SESSION ['netforum_sso'].'" target="_blank" class="btn btn-md btn-primary">Non-Member Access</a></span>';
+									}
+		$output .= '				<span class="nonmem-access-price">'.$non_price.'</span>
+								</div>';
+								}
+		$output .= '		</div>
+							<div style="clear:both"></div>
+						</div>
+					</div>';
+		return $output;
+	}	
+}
+
+/**
+ * Callback function for listing the product list separately to edit the content;
+ * Date : 25th Jan'2017
+ *
+ */
+function netproductsync_list() {
+	$output = netproductsync_table();
+	return $output;
+}
+function netproductsync_table() {
+	global $base_url;   // Will point to http://www.example.com
+
+	drupal_add_css(drupal_get_path('module', 'netproductsync') . '/css/netproduct.css');
+	drupal_add_css(drupal_get_path('module', 'netproductsync') . '/js/jquery.dataTables.min.css');
+	drupal_add_js(drupal_get_path('module', 'netproductsync') . '/js/jquery.dataTables.min.js');
+	drupal_add_js(
+		'jQuery(window).load(function() {
+			jQuery("#prod-list").DataTable( {
+				"pagingType": "simple_numbers",
+				"lengthMenu" : [10, 50, 100, 500],
+				"pageLength" : 10,
+			});
+		});
+		',
+		array(
+			'type' => 'inline',
+			'scope' => 'footer',
+			'group' => JS_THEME,
+			'weight' => 5,
+		)
+	);
+	
+	$query = db_select('fs_netproduct_sync');
+	$query->fields('fs_netproduct_sync',array('pid','prd_key','prd_name','prd_code','mer_category','prd_mem_price','prd_non_price','prd_shippable_flag','prd_dowanload_url'));
+	$record = $query->execute()->fetchAll();
+	
+	$output = '<table id="prod-list">
+					<thead>
+						<tr>
+							<th>Code</th>
+							<th>Name</th>
+							<th>Category</th>
+							<th>Downloadable</th>
+							<th>Action</th>
+						</tr>
+					</thead>
+					<tbody>';
+					foreach ($record as $products) {
+						$download = ($products->prd_shippable_flag == "0") ? "Yes" : "No";
+	$output .= '		<tr>
+							<td>'.$products->prd_code.'</td>
+							<td>'.$products->prd_name.'</td>
+							<td>'.$products->mer_category.'</td>
+							<td>'.$download.'</td>
+							<td>
+								<a href="'.$base_url.'/admin/config/netforum/productlist/edit?pid='.$products->pid.'" class="pop-up-edit">Edit</a>
+							</td>
+						</tr>';
+					}	
+	$output .= '		</tbody>
+				</table>';
+	return $output;
+}
+function netproduct_edit_popup($form, &$form_state) {
+	$getParam = drupal_get_query_parameters();
+	if (empty($getParam)) {
+		$pid = "";
+	} else {
+		$pid = $getParam['pid'];
+	}
+	$query = db_select('fs_netproduct_sync','n1')->fields('n1',array('prd_key','prd_dowanload_url'))
+	->condition('pid', $pid);
+	$result = $query->execute()->fetchAssoc();
+	
+	$form['netproduct_edit'] = array(
+		'#title' => "NF Product",
+		'#type' => 'fieldset',
+	);
+	$form['netproduct_edit']['hidden_pid'] = array(
+		'#type' => 'hidden',
+		'#id' => 'hid_pid',
+		'#value' => $pid,
+	);
+	$form['netproduct_edit']['download_url'] = array(
+		'#type' => 'textarea',
+		'#title' => t('Download URL'),
+		'#description' => t('Enter the download url'),
+		'#required' => TRUE,
+		'#default_value' => $result['prd_dowanload_url'],
+	);
+	$form['netproduct_edit']['submit_update'] = array(
+		'#type' => 'submit',
+		'#id' => 'updatebtn',
+		'#value' => t('Update'),
+	);
+	$form['netproduct_edit']['linkClose'] = array(
+		'#type' => 'link',
+		'#title' => t('BACK'),
+		'#id' => 'saveprogress-link',
+		'#href' => 'admin/config/netforum/productlist',
+	);
+	return $form;
+}
+
+/**
+ * Form submit which edit the download url with products;
+ *
+ */
+function netproduct_edit_popup_submit($form, $form_state) {
+	$getParam = drupal_get_query_parameters();
+	if (empty($getParam)) {
+		$pid = "";
+	} else {
+		$pid = $getParam['pid'];
+	}
+	$download_url = $form_state['values']['download_url'];;
+	db_update('fs_netproduct_sync')
+	->fields(array('prd_dowanload_url' => $download_url))->condition ('fs_netproduct_sync.pid', $pid)->execute();
+	drupal_set_message("Product has been updated successfully.");	
+}

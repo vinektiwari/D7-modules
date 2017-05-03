@@ -1,0 +1,86 @@
+<?php
+ /**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the netForum Groups module;
+ *
+ * Start Date : 4th April'2017;
+ * Author : Vinek T;
+ */
+
+/**
+ * Implements hook_install()
+ */
+function netgroups_install() {
+	if(!variable_get('netgroups_group_name_benefits',false)){
+   		variable_set('netgroups_group_name_benefits', 'nfbenefits');
+   }
+   _add_role(variable_get('netgroups_group_name_benefits', false));
+   
+   if(!variable_get('netgroups_group_name_members', false)){
+   		variable_set('netgroups_group_name_members', 'nfmembers');
+   }
+   _add_role(variable_get('netgroups_group_name_members', false));
+   
+   if(!variable_get('netgroups_group_name_lifemember', false)){
+   		variable_set('netgroups_group_name_lifemember', 'nflifemember');
+   }
+   _add_role(variable_get('netgroups_group_name_lifemember', false));
+   
+   if(!variable_get('netgroups_group_name_non_members', false)){
+   		variable_set('netgroups_group_name_non_members', 'nfnonmember');
+   }
+   _add_role(variable_get('netgroups_group_name_non_members', false));
+}
+
+/**
+ * Implements hook_uninstall()
+ */
+function netgroups_uninstall() {
+	// user_role_delete('nfnonmember');
+	// drupal_set_message(t('netForum groups subscriber role has been removed.'));
+}
+
+/**
+ * Implements hook_enable()
+ */
+function netgroups_enable() {
+	netgroups_install();
+}
+
+/**
+ * Implements hook_disable()
+ */
+function netgroups_disable() {
+	netgroups_uninstall();
+}
+
+/**
+ * Adds a new role
+ *
+ * @machine_name - the name of the role to be added
+ * @weight - the optional display weight for role
+ */
+function _add_role($machine_name, $weight = 0) {
+	if($machine_name === false){
+		return;
+	}
+	if(!user_role_load_by_name($machine_name)) {
+    	$role = new stdClass();
+    	$role->name = $machine_name;
+    	$role->weight = $weight;
+    	user_role_save($role);
+	}
+}
+
+/**
+ * Adds permissions to a role
+ *
+ * @role_name - the name of the role to receive an update
+ * @permissions - the array of permissions to add
+ */
+function _add_permissions($role_name, $permissions) {
+    $role = user_role_load_by_name($role_name);
+    if ( $role )
+        user_role_grant_permissions($role->rid, $permissions);
+}

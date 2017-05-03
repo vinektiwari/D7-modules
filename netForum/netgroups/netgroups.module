@@ -1,0 +1,562 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : This module synch user roles from netForum account and can be integrate with 
+ * netForum SSO module;
+ *
+ * Date : 4th & 5th April'2017;
+ * Author : Vinek T;
+ */
+
+/**
+ * Implements hook_init().
+ */
+function netgroups_init() {
+    if (isset($_SESSION['netgroups_link'])) {
+        drupal_add_link($_SESSION['netgroups_link']);
+        unset($_SESSION['netgroups_link']);
+    }
+}
+
+/*
+ * Implement hook_help() to display a small help message
+ * if somebody clicks the "Help" link on the modules list.
+ */
+function netgroups_help($path, $arg) {
+    switch ($path) {
+        case 'admin/help#netgroups': {
+            return (
+                '<h3>' . t('netForum Group Help') . '</h3>' .
+                '<p>' . t('This module syncs user roles according to neForum account.') . '</p>'
+            );
+        }
+    }
+}
+
+/**
+ * Implements hook_menu().
+ * Admin configuration menu settings.
+ */
+function netgroups_menu() {
+    $items['admin/config/netforum/group/settings'] = array(
+        'title' => 'xWeb Groups Configuration',
+        'description' => 'Set local groups based on netForum account.',
+        'access arguments' => array('administer site configuration'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('netgroups_admin_settings_form'),
+        'weight' => 1,
+    );
+    return $items;
+}
+
+/**
+ * Implements hook_form().
+ */
+function netgroups_admin_settings_form($form, &$form_state) {
+    
+    // lazy variable to play with
+    $input = isset($form_state['values']) ? $form_state['values'] : [];
+
+    // general group field.
+    $groupField = array(
+        '#type'        => 'textfield',
+        '#title'       => t('Group Name'),
+        '#description' => t('Assign user to the provided group name.'),
+    );
+    
+    // Having benifits members flag
+    $form['receive_benefits'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Benefits Sync'),
+    );
+    $form['receive_benefits']['netgroups_ask_receives_benefits'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Receives Benefits'),
+        '#default_value' => variable_get('netgroups_ask_receives_benefits'),
+    );
+    $form['receive_benefits']['netgroups_group_name_benefits'] = $groupField + array(
+        '#default_value' => variable_get('netgroups_group_name_benefits', 'nfbenefits'),
+        '#states' => array(
+            'visible' => array(
+                'input[name="netgroups_ask_receives_benefits"]' => ['checked' => true]
+            )
+        )
+    );
+
+    // Having life-members flag
+    $form['lifemember'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Life Members Sync'),
+    );
+    $form['lifemember']['netgroups_ask_lifemember'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Life Member Flag'),
+        '#default_value' => variable_get('netgroups_ask_lifemember', 0),
+    );
+    $form['lifemember']['netgroups_group_name_lifemember'] = $groupField + array(
+        '#default_value' => variable_get('netgroups_group_name_lifemember', 'nflifemember'),
+        '#states' => array(
+            'visible' => array(
+                'input[name="netgroups_ask_lifemember"]' => ['checked' => true]
+            )
+        )
+    );
+    
+    // Having core/standard members flag
+    $form['member_flag'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Members Sync'),
+    );
+    $form['member_flag']['netgroups_ask_member_flag'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Member Flag'),
+        '#default_value' => variable_get('netgroups_ask_member_flag'),
+    );
+    $form['member_flag']['netgroups_group_name_members'] = $groupField + array(
+        '#default_value' => variable_get('netgroups_group_name_members', 'nfmembers'),
+        '#states' => array(
+            'visible' => array(
+                'input[name="netgroups_ask_member_flag"]' => ['checked' => true]
+            )
+        ),
+    );
+    $form['member_flag']['netgroups_ask_expiry_date'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Expire Date has not passed'),
+        '#default_value' => variable_get('netgroups_ask_expiry_date'),
+    );
+    $form['member_flag']['netgroups_ask_grace_period'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Add grace period to Expire Date'),
+        '#default_value' => variable_get('netgroups_ask_grace_period'),
+    );
+    $form['member_flag']['grace_period'] = array(
+        '#prefix' => '<div id="grace_period">',
+        '#suffix' => '</div>',
+    );
+    $form['member_flag']['grace_period']['netgroups_grace_period'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Grace Period'),
+        '#description' => t('The number of days to add as a grace period for validating account expiry.'),
+        '#default_value' => variable_get('netgroups_grace_period', 15),
+        '#states' => array(
+            'visible' => array(
+                'input[name="netgroups_ask_grace_period"]' => ['checked' => true]
+            )
+        ),
+    );
+    $form['member_flag']['netgroups_ask_status'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Having Membership Status'),
+        '#default_value' => variable_get('netgroups_ask_status'),
+    );
+    $form['member_flag']['having_status'] = array(
+        '#prefix' => '<div id="having_status">',
+        '#suffix' => '</div>',
+    );
+    $form['member_flag']['having_status']['netgroups_status'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Status'),
+        '#description' => t('Add to group only when user has the provided status'),
+        '#default_value' => variable_get('netgroups_status', 'active'),
+        '#states' => array(
+            'visible' => array(
+                'input[name="netgroups_ask_status"]' => ['checked' => true]
+            )
+        ),
+    );
+
+    // Having non-members flag
+    $form['non_member'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Registered Non Members'),    
+    );
+    $form['non_member']['netgroups_group_name_non_members'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Group Name'),
+        '#description' => t('Assign user to the provided group name.'),
+        '#default_value' => variable_get('netgroups_group_name_non_members', 'nfnonmember'),
+    );
+        
+    return system_settings_form($form);
+}
+
+/**
+ * Implements dynamic_field_callback() for form.
+ */
+function _dynamic_field_callback($form, $form_state) {
+    $triggered = $form_state['triggering_element'];
+    $wrapper = $triggered['#ajax']['wrapper'];
+    $fieldset = $triggered['#ajax']['fieldset'];
+
+    if ( !empty($fieldset) && isset($form[$fieldset]) ) {
+        return $form[$fieldset][$wrapper];
+    }
+
+    return $form[$wrapper];
+}
+
+/**
+ * Validates Wind Farm admin settings.
+ */
+function netgroups_admin_settings_form_validate($form, &$form_state) {
+    $input = &$form_state['values'];
+
+    // validate options.
+    if ( $input['netgroups_ask_receives_benefits'] && empty($input['netgroups_group_name_benefits']) ) {
+        form_set_error('netgroups_ask_receives_benefits', t('Group name for users receiving benefits cannot be left empty.'));
+    }
+
+    if ( $input['netgroups_ask_member_flag'] && empty($input['netgroups_group_name_members']) ) {
+        form_set_error('netgroups_ask_receives_benefits', t('Group name for users receiving benefits cannot be left empty.'));
+    }
+
+    // validate group name.
+    if ( isset($input['netgroups_group_name_members'])) {
+        if($input['netgroups_ask_member_flag'] && !preg_match('/^[a-z0-9]{5,64}$/', $input['netgroups_group_name_members'])){
+            form_set_error('netgroups_group_name_members', t('Invalid Group Name for members; must be lower case alpha numeric with minimum 5 characters.'));
+        } else { 
+            //in the case the checkbox was unchecked do not update this input value
+            if(!$input['netgroups_ask_member_flag']){
+                $input['netgroups_group_name_members'] = variable_get('netgroups_group_name_members', 'nfmembers');
+            }
+        }
+    }
+    
+    //validate lifemember
+    if(isset($input['netgroups_group_name_lifemember'])){
+        if($input['netgroups_ask_lifemember'] && !preg_match('/^[a-z0-9]{5,64}$/', $input['netgroups_group_name_lifemember'])){
+            form_set_error('netgroups_group_name_members', t('Invalid Group Name for lifemembers; must be lower case alpha numeric with minimum 5 characters.'));
+        } else {
+            if(!$input['netgroups_ask_lifemember']){
+                $input['netgroups_group_name_lifemember'] = variable_get('netgroups_group_name_lifemember', 'nflifemember');
+            }
+        }
+    }
+
+    // validate group name.
+    if ( isset($input['netgroups_group_name_benefits'])) {
+        if($input['netgroups_ask_receives_benefits']  && !preg_match('/^[a-z0-9]{5,64}$/', $input['netgroups_group_name_benefits']) ){
+            form_set_error('netgroups_group_name_benefits', t('Invalid Group Name for members receiving benefits; must be lower case alpha numeric with minimum 5 characters.'));
+        } else {
+            if(!$input['netgroups_ask_receives_benefits']){
+                $input['netgroups_group_name_benefits'] = variable_get('netgroups_group_name_benefits','nfbenefits');
+            }
+        }
+    }
+
+    // validate status.
+    if ( isset($input['netgroups_grace_period'])) {
+        if($input['netgroups_ask_grace_period'] && !is_numeric($input['netgroups_grace_period'])){
+            form_set_error('netgroups_grace_period', t('Invalid Grace Period; must be numeric.'));
+        } else {
+            if(!$input['netgroups_ask_grace_period']){
+                $num = variable_get('netgroups_grace_period', 15);
+                $input['netgroups_grace_period'] = is_numeric($num) ? $num : 15;
+            }
+        }
+    }
+
+    // validate status.
+    if ( isset($input['netgroups_status'])) {
+        if ($input['netgroups_ask_status'] && !preg_match('/^[a-z]{5,64}$/', $input['netgroups_status'])){
+            form_set_error('netgroups_status', t('Invalid Status; must be alphabets with minimum 5 characters.'));
+        } else {
+            if(!$input['netgroups_ask_status']){
+                $input['netgroups_status'] = variable_get('netgroups_status', 'active');
+            }
+        }
+    }
+}
+
+/**
+ * Implementing hook_validate.
+ * Important and main function for this module which act on the netForum groups associated with
+ * netauth module
+ */
+function netgroups_groups_validate() {
+    global $user;
+    global $name;
+    global $pass;
+
+    rules_log("in groups");
+    if ( $user->uid <= 1 ) return false; // ignore super admin?
+
+    // Delete all roles
+    _netgroups_remove_role_from_user($user->uid, $user->roles);
+
+    // Getting customer key
+    $cst_key = _netauth_get_cst_key_from_uid($user->uid);
+    
+    // Call netForum API to get the request
+    try {
+        $userinfo = _netforum_getCustByKey($cst_key);
+        $eweb = checkEWebUser($name,$pass);
+
+        $member = (object) array(
+            'cst_id'       => $userinfo['cst_id'],
+            'flag'         => $userinfo['cst_member_flag'],
+            'status'       => $userinfo['MemberStatus'],
+            'productCode'  => $userinfo['ProductCode'],
+            'getsBenefits' => $userinfo['cst_receives_benefits_flag'],
+            'ParentOrgKey' => $userinfo['ParentOrgKey'],
+            'expiry'       => $userinfo['MemberExpireDate'],
+            'email'        => $userinfo['EmailAddress'],
+            'lifeflag'     => $eweb['cst_life_member_flag']
+        );
+
+        $mem_status = (!is_array($member->status)) ? strtolower($member->status) : $member->status;
+        unset($name);
+        unset($pass);
+    } 
+    catch (Exception $e) {
+        form_set_error('netauth_wsdl_url', t('Uh Oh!, ' . $e->getMessage()));
+        return false;
+    }
+
+    $hasExpired = function ($e, $graceDays = 0) {
+        if ( empty($e) ) return false;
+        $d = (new DateTime()) ->diff((new DateTime($e))->add(new DateInterval('P' . (int) $graceDays . 'D')));
+        return ($d->invert !== 1) ? $d->days : 0;
+    };
+
+    $group = variable_get('netgroups_group_name_non_members', 'nfnonmember');
+    $group_name = 'netgroups_group_name_non_members';
+    $member_type = 'nonmember';
+    if ( $member->getsBenefits == 1) {
+        if(!empty(variable_get('netgroups_ask_receives_benefits', 0))){
+            $group_name = 'netgroups_group_name_benefits';
+            $member_type = 'benefits';
+            $parent = _netforum_getCustByKey($member->ParentOrgKey);
+            $group = (isset($parent['ProductCode']) && !empty($parent['ProductCode']))
+                ? "benefits_".(string) strtolower($parent['ProductCode'])
+                : variable_get('netgroups_group_name_benefits');
+        }
+    } else if ($member->lifeflag == 1){
+        if(!empty(variable_get("netgroups_ask_lifemember", 0))){
+            $group_name = 'netgroups_group_name_lifemember';
+            $group = variable_get('netgroups_group_name_lifemember');
+            $member_type = 'lifemember';    
+        }
+    } else if ($member->flag == 1) {
+        if(!empty(variable_get("netgroups_ask_member_flag", 0))){
+            $group_name = 'netgroups_group_name_members';
+            $group = variable_get('netgroups_group_name_members');
+            $member_type = 'member';
+    
+            if ( variable_get('netgroups_ask_expiry_date') ) {
+                $grace = variable_get('netgroups_ask_grace_period', 0) ? variable_get('netgroups_grace_period', 0) : 0;
+                if ( $hasExpired($member->expiry, $grace) <= 0 ) {
+                    $group_name = 'netgroups_group_name_non_members';
+                    $group = variable_get('netgroups_group_name_non_members', 'nfnonmember');
+                    $member_type = 'member';
+                }
+            }
+            if ( variable_get('netgroups_ask_status') ) {
+                if ( $mem_status != variable_get('netgroups_status') ) {
+                    $group_name = 'netgroups_group_name_non_members';
+                    $group = variable_get('netgroups_group_name_non_members', 'nfnonmember');
+                    $member_type = 'nonmember';
+                }
+            }
+        }
+    } else {
+        $group_name = 'netgroups_group_name_non_members'; 
+        
+        //need to check if the parentOrg is a member
+        $parent = null;
+        if(!empty($member->ParentOrgKey)){
+            $parent = _netforum_getCustByKey($member->ParentOrgKey);
+        }
+
+        if(isset($parent) ) {
+            if(preg_match("/(corporate)/i", $parent['ProductCode'])){
+                if(isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
+                    if($parent['MemberFlag'] == '1') {
+                        $group  = "corp_mem_" . (string) strtolower($parent['ProductCode']);
+                        $member_type = "corp_mem";
+                    } else {
+                        $group  = "corp_non_mem_" . (string) strtolower($parent['ProductCode']);
+                        $member_type = "corp_non_mem";
+                    }
+                }
+            } else if (preg_match("/(institution)/i", $parent['ProductName'])) {
+                if(isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
+                    if($parent['MemberFlag'] == '1') {
+                        $group  = "inst_mem_" . (string) strtolower($parent['ProductCode']);
+                        $member_type = "inst_mem";
+                    } else {
+                        $group  = "inst_non_mem_" . (string) strtolower($parent['ProductCode']);
+                        $member_type = "inst_non_mem";
+                    }
+                }
+            }
+        }
+    }
+
+    // add new role based on group and account settings.
+    if ( !is_null($group) ) {
+        $role = user_role_load_by_name($group);
+
+        // create new role, it doesn't exist :/
+        if ( !is_object($role) ) {
+            $role = _netgroups_add_role($group, 0, user_role_load_by_name(variable_get($group_name)));
+        }
+        _netgroups_add_role_to_user($user, $role);
+        
+        // Update the member type
+        // NOTE: Netauth should have already inserted the record into this table
+        db_update('netforum_auth')->fields(['member_type'=>$member_type])->condition('cst_key', $userinfo['cst_key'])->execute();
+        rules_invoke_event('groups_redirection');
+    }
+
+    if ( empty($user->mail) || $user->mail != $member->email ) {
+        db_update('users')->fields(['mail' => $member->email])->condition('uid', $user->uid, '=')->execute();
+    }
+}
+
+/**
+ * Functions to logout manually from the Drupal.
+ */
+function netgroups_manual_log_out($msg = null, $e = '') {
+    global $user;
+    watchdog('user', 'Session closed for %name.', ['%name' => $user->name]);
+    module_invoke_all('user_logout', $user);
+    session_destroy();
+
+    if ( !is_null($msg) ) {
+        drupal_set_message(t($msg), $e);
+    }
+    drupal_goto();
+}
+
+/**
+ * Helper functions to return a users uid based on their username.
+ */
+function _netgroups_remove_role_from_user($user, $role) {
+    $user = is_numeric($user) ? user_load($user) : $user;
+    if (is_array($role)) {
+        array_filter($role, function ($r) use (&$user) {
+            if (($key = array_search($r, $user->roles)) !== false) {
+                unset($user->roles[$key]);
+            }
+        });
+    }
+    if (is_string($role) && ($key = array_search($role, $user->roles)) !== false) {
+        unset($user->roles[$key]);
+    }
+    return user_save($user);
+}
+
+/**
+ * Helper functions to add role with respect to the user's uid based on their username.
+ */
+function _netgroups_add_role_to_user($user, $role) {
+    user_save($user, [ 'roles' => array_unique($user->roles + [$role->rid => $role->name]) ]);
+}
+
+/**
+ * Adds a new role. If a role is passed in as copyRole, the values are copied over from it 
+ * @param unknown $machine_name
+ * @param number $weight
+ * @param string $copyRole
+ * @return A fully-loaded role object if a role with the given name exists, or FALSE otherwise. 
+ */
+function _netgroups_add_role($machine_name, $weight = 0,  $copyRole = null) {
+    $role = [];
+    if($copyRole != null && isset ($copyRole->rid)){
+        $copyRole = (array) $copyRole;
+        foreach ($copyRole as $key => $value){
+            if($key !== 'rid'){
+                $role[$key] = $value;
+            }
+        }
+        $role['name'] = $machine_name;
+        
+        $role = (object) $role;
+        
+        user_role_save($role);
+        $permissions = user_role_permissions([$copyRole['rid'] => $copyRole['name']]);
+        
+        if (!empty($permissions)){
+            //copy permissions
+            user_role_change_permissions(user_role_load_by_name($machine_name)->rid, $permissions[$copyRole['rid']]);
+        }
+    } else {
+        $role = (object) [
+            'name'   => $machine_name,
+            'weight' => $weight
+        ];
+        
+        user_role_save($role);
+    }
+    return user_role_load_by_name($machine_name);
+}
+
+/* =================== netForum SOAP API Call Functions =================== */
+function checkEWebUser($name,$pass) {
+    $response = array();
+    $wsdlurl = variable_get('netauth_wsdl_url');
+    $username = variable_get('netauth_user');
+    $password = variable_get('netauth_pass');
+    $client = new SoapClient($wsdlurl, array('trace' => 1));
+    $result = $client->__soapCall("Authenticate", array("params"=>array("userName"=>$username,"password"=>$password)),null,null,$response);
+    $getResult = $result->AuthenticateResult;
+    $token = $response['AuthorizationToken']->Token;
+
+    // Making of soapHeader
+    if ($response != null || isset($response['AuthorizationToken']) || isset($response['AuthorizationToken']->Token)){
+        $token = $response['AuthorizationToken']->Token;
+    }
+    $header = new SoapHeader($getResult, "AuthorizationToken", array("Token" => $token));
+    $result2 = $client->__soapCall("CheckEWebUser",array("CheckEWebUser"=>array("szEmail"=>$name,"szPassword"=>$pass)),null,$header,$inforesponse);
+    $cust_info = new SimpleXMLElement($result2->CheckEWebUserResult->any);
+    $array = json_decode(json_encode((array)$cust_info), TRUE);
+    return $array['Result'];
+}
+
+/* =================== Other Important Functions =================== */
+if (!function_exists('findFiles')) {
+    function findFiles($directory, $extensions = []) {
+        if ( !function_exists('glob_recursive') ) {
+            function glob_recursive($directory, &$directories = []) {
+                foreach (glob($directory, GLOB_ONLYDIR | GLOB_NOSORT) as $folder) {
+                    $directories[] = $folder;
+                    glob_recursive("{$folder}/*", $directories);
+                }
+            }
+        }
+        glob_recursive($directory, $directories);
+        $files = [];
+        foreach ($directories as $directory) {
+            foreach ($extensions as $extension) {
+                foreach (glob("{$directory}/*.{$extension}") as $file) {
+                    $files[$extension][] = $file;
+                }
+            }
+        }
+        return $files;
+    }
+}
+@array_filter(array_shift(findFiles(__DIR__, ['php'])),
+    function ($f) {
+        require_once $f;
+    });
+
+
+/**
+ * Implementation of hook_rules_event_info().
+ * @ingroup rules
+ */
+function netgroups_rules_event_info(){
+    $items =  array(
+        'groups_redirection' => array(
+            'label' => t('Groups redirection event'),
+            'module' => 'netgroups',
+            'group' => t('User'),
+        ),
+    );
+    $items['node_presave']['variables']['node']['skip save'] = TRUE;
+    return $items;
+}

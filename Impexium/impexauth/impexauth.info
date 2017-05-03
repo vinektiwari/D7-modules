@@ -1,0 +1,8 @@
+name = Impexium SSO
+description = The module allow users to get register/login into site with Impexium credentials via it's REST API console. 
+package = FusionSpan
+
+core = 7.x
+version = 7.x-1.0
+files[] = impexauth.install
+configure = admin/config/impexium/auth/settings

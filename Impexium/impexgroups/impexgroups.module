@@ -1,0 +1,360 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : This module synch user roles from Impexium account and can be integrate with 
+ * Impexium SSO module;
+ *
+ * Date : 30th & 31st March'2017;
+ * Author : Vinek T.;
+ */
+
+/**
+ * Implements hook_init().
+ */
+function impexgroups_init() {
+    if (isset($_SESSION['impexgroups_link'])) {
+        drupal_add_link($_SESSION['impexgroups_link']);
+        unset($_SESSION['impexgroups_link']);
+    }
+}
+
+/**
+ * Implements hook_help option().
+ */
+function impexgroups_help($path, $arg) {
+    switch ($path) {
+        case 'admin/help#impexgroups': {
+            return (
+                '<h3>' . t('Impexium Group Help') . '</h3>' .
+                '<p>' . t('This module syncs user roles according to Impexium account.') . '</p>'
+            );
+        }
+    }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function impexgroups_menu() {
+    // Admin configuration - Settings.
+    $items['admin/config/impexium/group/settings'] = array(
+        'title'            => 'Impexium Sync Groups Configuration',
+        'description'      => 'Set local groups based on Impexium account.',
+        'access arguments' => array('administer site configuration'),
+        'page callback'    => 'drupal_get_form',
+        'page arguments'   => array('impexgroups_admin_settings_form'),
+        'weight'           => 1,
+    );
+    return $items;
+}
+
+/**
+ * Implements hook_form().
+ */
+function impexgroups_admin_settings_form($form, &$form_state) {
+    // lazy variable to play with
+    $input = isset($form_state['values']) ? $form_state['values'] : [];
+
+    $form['non_member'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Registered Non Members'),    
+    );
+    
+    $form['non_member']['impexgroups_group_name_non_members'] = array(
+        '#type'        => 'textfield',
+        '#title'       => t('Group Name'),
+        '#description' => t('Assign user to the provided group name.'),
+        '#default_value' => variable_get('impexgroups_group_name_subscriber', 'subscriber'),
+    );
+    return system_settings_form($form);
+}
+
+/**
+ * Implements dynamic_field_callback() for form.
+ */
+function _dynamic_field_callback($form, $form_state) {
+    $triggered = $form_state['triggering_element'];
+    $wrapper = $triggered['#ajax']['wrapper'];
+    $fieldset = $triggered['#ajax']['fieldset'];
+
+    if ( !empty($fieldset) && isset($form[$fieldset]) ) {
+        return $form[$fieldset][$wrapper];
+    }
+
+    return $form[$wrapper];
+}
+
+/**
+ * Main functions to execute all group sync and attached roles to the user based on their Impexium
+ * account details and patch it here with respect to the user
+ */
+function impexgroups_groups_validate() {
+    global $user;
+
+    rules_log("in groups");
+    $ssoToken = $_SESSION['impex_sso'];
+    
+    // Ignore super admin?
+    if ($user->uid <= 1) return false;
+
+    // Delete all roles.
+    $del_rol = _impexgroups_remove_role_from_user($user->uid, $user->roles);
+
+    // Get user info by curl methods
+    $cust_info = _curlCustInfoViaSSOToken($ssoToken);
+    $cust_mail = $cust_info->dataList[0];
+    
+    // Check for the non-member flags as default
+    $group = variable_get('impexgroups_group_name_subscriber', 'subscriber');
+    $group_name = 'impexgroups_group_name_subscriber';
+    $member_type = 'subscriber';
+    
+    if (!empty($cust_info->dataList)) {
+        foreach ($cust_info->dataList as $dataList) {
+            // Check if user has membership array parameter
+            if (!empty($dataList->memberships)) {
+                foreach ($dataList->memberships as $memData) {
+                    $mem_type = $memData->membershipType;
+                    $group = $memData->code;
+                    $member_type = $group." member";
+                    if (!is_null($group)) {
+                        $role = user_role_load_by_name($group);
+                        
+                        // create new role, it doesn't exist :/
+                        if (!is_object($role)) {
+                            //add new role and copy default
+                            $role = _impexgroups_add_role($group, 0, user_role_load_by_name(variable_get($group_name)));
+                        }
+
+                        // add user to role.
+                        // var_dump('add user to role ' . $role->name);
+                        _impexgroups_add_role_to_user($user, $role);
+
+                        // update the member type. NOTE: Netauth should have already inserted the record into this table
+                        db_update('fs_impexium_auth')->fields(['member_type'=>$member_type])->condition('userId', _impexauth_get_userId_from_uid($user->uid))->execute();
+
+                        rules_invoke_event('groups_redirection');
+                    } else {
+                        $role = user_role_load_by_name($group);
+
+                        // add user to role.
+                        _impexgroups_add_role_to_user($user, $role);
+
+                        // update the member type. NOTE: Netauth should have already inserted the record into this table
+                        db_update('fs_impexium_auth')->fields(['member_type'=>$member_type])->condition('userId', _impexauth_get_userId_from_uid($user->uid))->execute();       
+                    }
+                }
+            } else {
+                $role = user_role_load_by_name($group);
+        
+                // add user to role.
+                _impexgroups_add_role_to_user($user, $role);
+
+                // update the member type. NOTE: Netauth should have already inserted the record into this table
+                db_update('fs_impexium_auth')->fields(['member_type'=>$member_type])->condition('userId', _impexauth_get_userId_from_uid($user->uid))->execute();
+            }
+        }
+    }
+
+    if (empty($user->mail) || ($user->mail != $cust_mail->email)) {
+        db_update('users')->fields(['mail' => $member->email])->condition('uid', $user->uid,'=')->execute();
+    }
+}
+
+/**
+ * Helper functions to return a users uid based on their username.
+ */
+function _impexgroups_remove_role_from_user($user, $role) {
+    $user = is_numeric($user) ? user_load($user) : $user;
+
+    if ( is_array($role) ) {
+        array_filter($role, function ($r) use (&$user) {
+            if ( ($key = array_search($r, $user->roles)) !== false ) {
+                unset($user->roles[$key]);
+            }
+        });
+    }
+
+    if ( is_string($role) && ($key = array_search($role, $user->roles)) !== false ) {
+        unset($user->roles[$key]);
+    }
+    return user_save($user);
+}
+
+/**
+ * Helper functions to add role with respect to the user's uid based on their username.
+ */
+function _impexgroups_add_role_to_user($user, $role) {
+    user_save($user, [ 'roles' => array_unique($user->roles + [$role->rid => $role->name]) ]);
+}
+
+/**
+ * Adds a new role. If a role is passed in as copyRole, the values are copied over from it 
+ * @param unknown $machine_name
+ * @param number $weight
+ * @param string $copyRole
+ * @return A fully-loaded role object if a role with the given name exists, or FALSE otherwise. 
+ */
+function _impexgroups_add_role($machine_name, $weight = 0, $copyRole = null) {
+    $role = [];
+    if($copyRole != null && isset ($copyRole->rid)) {
+        $copyRole = (array) $copyRole;
+        foreach ($copyRole as $key => $value){
+            if($key !== 'rid'){
+                $role[$key] = $value;
+            }
+        }
+        $role['name'] = $machine_name;
+        
+        $role = (object) $role;
+        user_role_save($role);
+        $permissions = user_role_permissions([$copyRole['rid'] => $copyRole['name']]);
+        if (!empty($permissions)){
+            //copy permissions
+            user_role_change_permissions(user_role_load_by_name($machine_name)->rid, $permissions[$copyRole['rid']]);
+            
+        }
+    } else {
+        $role = (object) [
+            'name'   => $machine_name,
+            'weight' => $weight
+        ];
+        user_role_save($role);
+    }
+    $name  = user_role_load_by_name($machine_name);
+}
+
+/* =================== cUrl Operation Handlers =================== */
+function _curlCustInfoViaSSOToken($ssoToken) {
+    $url = variable_get('web_api_url');
+    $appname = variable_get('api_app_name');
+    $appkey = variable_get('api_app_key');
+    $data = array('AppName' => $appname, 'AppKey' => $appkey);
+    $ch = curl_init(); // Initiate cURL
+    curl_setopt($ch, CURLOPT_URL,$url);
+    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
+    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
+    $output = curl_exec ($ch); // Execute
+    curl_close ($ch); // Close cURL handle
+    $auth = json_decode($output, TRUE);
+    
+    // matches the current api
+    $matches = [];
+    preg_match('/((http:\/\/|https:\/\/)([a-z.0-9-]+))\//', $auth['uri'], $matches);
+    if(count($matches) < 3){
+        throw new Exception("An error occured with parsing the client url");
+    }
+    
+    $clientUrl = $matches[0];
+    $responseToken = $auth['accessToken'];
+    if($responseToken){
+        $headers = array(
+            'AccessToken:'.trim($responseToken),
+            'UserToken:'.trim($ssoToken),
+            //'Content-Type: application/json',
+        );
+        
+        $clientUrl = trim($clientUrl).'api/v1/Individuals/FindBySsoToken/'.trim($ssoToken);
+        $ch = curl_init(); // Initiate cURL
+        curl_setopt($ch, CURLOPT_URL, $clientUrl);
+        $options = array(
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_SSL_VERIFYPEER => 0,
+            CURLOPT_FOLLOWLOCATION => 1,
+            CURLOPT_RETURNTRANSFER => TRUE,
+            CURLOPT_HEADER => false,
+            CURLOPT_USERAGENT => $_SERVER['HTTP_USER_AGENT'],
+            CURLOPT_HTTPHEADER => $headers,
+        );
+        curl_setopt_array($ch, $options);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
+
+        ob_start();
+        $output = curl_exec ($ch); // Execute
+        if(!curl_errno($ch)){
+            $info = curl_getinfo($ch);
+            if($info['http_code'] == '200'){
+                $output = json_decode($output);
+                $errorMsg = json_encode(array(
+                    "status"=> "success",
+                    "result"=> $output,
+                ));
+            } else {
+                $errorMsg = json_encode(array(
+                "status"=> "failed",
+                "result"=> 'The credentials you entered does not match our records.',
+                ));
+            }
+        } else {
+            $errorMsg = json_encode(array(
+            "status"=> "failed",
+            "result"=> 'The credentials you entered does not match our records.',
+            ));
+        }
+        // return $errorMsg;
+        ob_end_clean();
+        curl_close ($ch); // Close cURL handle
+    
+        // decode the response
+        $customerObj = json_decode($errorMsg);
+        if($customerObj->status == 'success'){
+            if(empty($customerObj->result)){
+                throw new Exception("No customer record returned for sso key");
+            }
+            @setcookie('ssoToken', $ssoToken, time() + 86400, '/');
+            return $customerObj->result;
+        } else {
+            throw new Exception($customerObj->result, 1);
+        }
+    } else {
+        throw new Exception("Impexium credentials not set", 1);
+    }
+}
+
+
+/* =================== Other Important Functions =================== */
+if (!function_exists('findFiles')) {
+    function findFiles($directory, $extensions = []) {
+        if ( !function_exists('glob_recursive') ) {
+            function glob_recursive($directory, &$directories = []) {
+                foreach (glob($directory, GLOB_ONLYDIR | GLOB_NOSORT) as $folder) {
+                    $directories[] = $folder;
+                    glob_recursive("{$folder}/*", $directories);
+                }
+            }
+        }
+        glob_recursive($directory, $directories);
+        $files = [];
+        foreach ($directories as $directory) {
+            foreach ($extensions as $extension) {
+                foreach (glob("{$directory}/*.{$extension}") as $file) {
+                    $files[$extension][] = $file;
+                }
+            }
+        }
+        return $files;
+    }
+}
+@array_filter(array_shift(findFiles(__DIR__, ['php'])),
+    function ($f) {
+        require_once $f;
+    });
+
+
+/**
+ * Implementation of hook_rules_event_info().
+ * @ingroup rules
+ */
+function impexgroups_rules_event_info(){
+    $items =  array(
+        'groups_redirection' => array(
+            'label' => t('Groups redirection event'),
+            'module' => 'impexgroups',
+            'group' => t('User'),
+        ),
+    );
+    $items['node_presave']['variables']['node']['skip save'] = TRUE;
+    return $items;
+}

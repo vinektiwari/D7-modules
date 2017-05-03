@@ -1,0 +1,80 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the netForum SSO module;
+ *
+ * Date : 23rd March'2017;
+ * Author : Vinek T.;
+ */
+
+/**
+ * Implements hook_schema();
+ *
+ */
+function netauth_schema() {
+	//Check if table exists, if not install the schema.
+	if(db_table_exists('fs_netforum_auth') == FALSE) {
+		$schema['fs_netforum_auth'] = array(
+		    'description' => 'To set the xWeb configuration with sso settings.',
+		    'fields' => array(
+				'id' => array(
+					'type' => 'serial',
+					'length' => 11,
+					'not null' => TRUE,
+				),
+				'uid' => array(
+					'type' => 'int',
+					'length' => 11,
+					'not null' => FALSE,
+				),
+				'cst_key' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'member_type' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'sso_token' => array(
+					'type' => 'varchar',
+					'length' => 1000,
+					'not null' => FALSE,
+				),
+			),
+			'primary key' => array('id'),
+			'auto increment' => 1,
+		);
+	}	
+	return $schema;
+} 
+
+
+/**
+ * Install the module and insert the record into the table if neccessory;
+ *
+ */
+function netauth_install() {
+	
+}
+
+
+/**
+ * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ *
+ */
+function netauth_uninstall() {
+	variable_del('netauth_wsdl_url');
+	variable_del('netauth_user');
+	variable_del('netauth_pass');
+	variable_del('netauth_secret');
+	variable_del('netauth_ttl');
+	variable_del('netauth_timeout');
+	variable_del('netauth_connection_timeout');
+	variable_del('netauth_enabled');
+	variable_del('netauth_member_url');
+	variable_del('netauth_non_member_url');
+	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+}

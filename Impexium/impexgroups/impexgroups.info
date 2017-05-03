@@ -1,0 +1,10 @@
+name = Impexium Groups
+description = Update user roles according to users Impexium account.
+package = FusionSpan
+core = 7.x
+version = 7.x-0.1-dev
+
+configure = admin/config/impexium/group/settings
+dependencies[] = impexauth
+dependencies[] = rules
+files[] = impexgroups.install

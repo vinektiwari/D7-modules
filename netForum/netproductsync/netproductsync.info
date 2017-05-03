@@ -1,0 +1,9 @@
+name = netForum Product & Sync
+description = This module allow users to get/fetch netFORUM product and get synchronize via xWeb by it's API console. 
+package = FusionSpan
+
+core = 7.x
+version = 7.x-0.1-dev
+dependencies[] = netauth
+files[] = netproductsync.install
+configure = admin/config/netforum/netproduct/settings/1
