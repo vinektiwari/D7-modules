@@ -1,0 +1,185 @@
+<?php
+
+/**
+ * Note this function installs the table below. When the module is uninstalled,
+ * the TABLE WILL BE DROPPED
+ *
+ * @return multitype:The multitype:string  multitype:multitype:string boolean
+ *   multitype:string boolean number  multitype:string number boolean
+ *   multitype:multitype:string
+ */
+function netmemberdirectory_schema() {
+	
+	$schema ['fusionspan_memberdirectory'] = [ 
+			'description' => t ( 'fusionSpan netFORUM member directory data' ),
+			'fields' => [ 
+					'id' => [ 
+							'description' => 'The primary identifier for a customer in this case the cst_key.',
+							'type' => 'serial',
+							'unsigned' => TRUE,
+							'not null' => TRUE 
+					],
+					'external_id' => [ 
+							'description' => 'The netforum customer id',
+							'type' => 'varchar',
+							'length' => 190,
+					],
+					'name' => [ 
+							'description' => 'Customer First name',
+							'type' => 'varchar',
+							'length' => 190,
+					],
+					'email' => [ 
+							'description' => 'Primary email',
+							'type' => 'varchar',
+							'length' => 190,
+					],
+					'middle_name'     => [
+							'description' => 'Middle Name',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'last_name'     => [
+							'description' => 'Last Name',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'title'     => [
+							'description' => 'Title',
+							'type'        => 'varchar',
+							'length'      => 100,
+					],
+					'name_prefix'     => [
+							'description' => 'Name Prefix',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'name_suffix'     => [
+							'description' => 'Name Suffix',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'address1'     => [
+							'description' => 'Primary Address 1',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'address2'     => [
+							'description' => 'Primary Address 2',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'address3'     => [
+							'description' => 'Primary Address 3',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'city'     => [
+							'description' => 'Primary Address City',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'state'     => [
+							'description' => 'Primary Address State',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'zipcode'     => [
+							'description' => 'Primary Address Zipcode',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'country'     => [
+							'description' => 'Primary Address Country',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'phone_no'     => [
+							'description' => 'Primary Phone No.',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'designation'     => [
+							'description' => 'Primary Address City',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'department'     => [
+							'description' => 'Department',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'domain_name'     => [
+							'description' => 'Domain Name',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'employment_org'     => [
+							'description' => 'Employment Organization (Parent Org)',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'position'     => [
+							'description' => 'Position',
+							'type'        => 'varchar',
+							'length'      => 190,
+					],
+					'do_not_publish_online'     => [
+							'description' => 'Do Not Publish Online Flag',
+							'type'        => 'int',
+							'size'      => 'tiny',
+							'default'     => 1
+					],
+					'is_member'     => [
+							'description' => 'Member Flag',
+							'type'        => 'int',
+							'size'      => 'tiny',
+							'default'     => 0
+					],
+					'recv_benefits'     => [
+							'description' => 'Receives Benefits Flag',
+							'type'        => 'int',
+							'size'      => 'tiny',
+							'default'     => 0
+					],
+					'cst_type'     => [
+							'description' => 'Whether the Customer is an Individual or an Organization',
+							'type'        => 'varchar',
+							'length'      => 80,
+							'default'     => 'Individual'
+					],
+					'member_code' => [
+							'description' => 'The type of membership the customer has e.g. instituional',
+							'type'        => 'varchar',
+							'length'      => 80,
+					],
+					'latitude' => [
+							'description' => 'the latitude corresponding to the address',
+							'type' => 'float',
+							'size' => 'big',
+					],
+					'longitude' => [
+							'description' => 'the longitude corresponding to the address',
+							'type' => 'float',
+							'size' => 'big',
+					],
+					'datechanged' => [
+							'description' => 'The date the record was modified in this database',
+							'type' => 'datetime',
+    						'mysql_type' => 'datetime',
+					],
+					
+			],
+			'unique keys' => [ 
+
+					'external_id' => [ 
+							'external_id' 
+					] 
+			],
+			'primary key' => [ 
+					'id' 
+			] 
+	];
+	
+	return $schema;
+}

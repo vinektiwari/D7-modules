@@ -1,0 +1,37 @@
+.netmemberdirectory_group{
+	font-weight:bold;
+	font-size: large;
+}
+
+.netmemberdirectory_map{
+	width:100%;
+	height:450px;
+	postion:relative;
+	#float:left;
+}
+
+.netmemberdirectory_map_info_panel{
+	width:100%;
+	position:relative;
+	#float:left;
+	padding-left:20px;
+	padding-right:20px;
+	#height:450px;
+	overflow-y:auto;
+}
+
+.netmemberdirectory_small{
+	width:650px;
+}
+
+.netmemberdirectory_country_heading, .netmemberdirectory_state_heading{
+	font-weight:bold;
+}
+
+.netmemeber_directory_map_listing{
+	background-color:#F2F2F2;
+}
+
+.netmemeber_directory_map_listing:hover{
+	background-color:#CDCDCD;
+}

@@ -1,0 +1,9 @@
+name = Member Directory
+description = Allows for the display of member directories and the display of google maps data.
+package = FusionSpan
+core = 7.x
+version = 7.x-0.1-dev
+configure = admin/config/netforum/netmemberdirectory/settings
+dependencies[] = netauth
+dependencies[] = shortcode
+dependencies[] = jqmulti

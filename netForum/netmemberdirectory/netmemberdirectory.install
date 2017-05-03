@@ -1,0 +1,245 @@
+<?php
+
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the netForum member directory module;
+ *
+ * Note this function installs the table below. When the module is uninstalled,
+ * the TABLE WILL BE DROPPED
+ *
+ * Date : 26th April'2017;
+ * Author : Vinek T.;
+ */
+
+/**
+ * Implements hook_schema();
+ *
+ */
+function netmemberdirectory_schema() {
+	$schema['fs_netmemberdir_settings'] = array(
+	    'description' => 'To set the product-sync settings.',
+	    'fields' => array(
+			'id' => array(
+				'type' => 'serial',
+				'length' => 11,
+				'not null' => TRUE,
+			),
+			'sync_frequency' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'google_map_code' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'created' => array(
+				'type' => 'datetime',
+				'mysql_type' => 'datetime',
+			),
+			'updated' => array(
+				'type' => 'datetime',
+				'mysql_type' => 'datetime',
+			),
+		),
+		'primary key' => array('id'),
+		'auto increment' => 1,
+	);
+	if(db_table_exists('fs_netmemberdir_sync') == FALSE) {
+		$schema['fs_netmemberdir_sync'] = array(
+		    'description' => 'To set the fusionSpan netFORUM member directory data',
+		    'fields' => array(
+				'id' => array(
+					'type' => 'serial',
+					'length' => 11,
+					'not null' => TRUE,
+				),
+				'external_id' => array( 
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'name' => array( 
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'email' => array( 
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'middle_name' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'last_name' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'title' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'name_prefix' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'name_suffix' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'address1' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'address2' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'address3' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'city' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'state' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'zipcode' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'country' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'phone_no' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'designation' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'department' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'domain_name' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'employment_org' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'position' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'do_not_publish_online' => array(
+					'type' => 'int',
+					'size' => 'tiny',
+					'default' => 1
+				),
+				'is_member' => array(
+					'type' => 'int',
+					'size' => 'tiny',
+					'default' => 0
+				),
+				'recv_benefits' => array(
+					'type' => 'int',
+					'size' => 'tiny',
+					'default' => 0
+				),
+				'cst_type' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'default' => 'Individual'
+				),
+				'member_code' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'latitude' => array(
+					'type' => 'float',
+					'size' => 'big',
+					'not null' => FALSE,
+				),
+				'longitude' => array(
+					'type' => 'float',
+					'size' => 'big',
+					'not null' => FALSE,
+				),
+				'datechanged' => array(
+					'type' => 'datetime',
+					'mysql_type' => 'datetime',
+				),
+			),
+			// 'unique keys' => array('external_id' => array('external_id')),
+			'primary key' => array('id'),
+			'auto increment' => 1,
+		);
+	}	
+	return $schema;
+}
+
+
+/**
+ * Install the module and insert the record into the table if neccessory;
+ */
+function netmemberdirectory_install() {
+	$created = date("Y-m-d H:i");
+	db_insert('fs_netmemberdir_settings')
+	->fields(array(
+		'sync_frequency' => 'Never',
+		'google_map_code' => '',
+		'created' => $created,
+	))
+	->execute();
+	
+	variable_set('memdir_sync_freq', "Never");
+	variable_set('memdir_maps_api_key', "");
+	variable_set('memdir_created', $created);
+	variable_set('memdir_run_sync', 0);
+	variable_set('memdir_last_sync', "Never");
+	// drupal_set_message(t('Selected netForum module has been successfully installed.'));
+}
+
+
+/**
+ * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ */
+function netmemberdirectory_uninstall() {
+	variable_del('memdir_sync_freq');
+	variable_del('memdir_maps_api_key');
+	variable_del('memdir_created');
+	variable_del('memdir_run_sync');
+	variable_del('memdir_last_sync');
+	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+}

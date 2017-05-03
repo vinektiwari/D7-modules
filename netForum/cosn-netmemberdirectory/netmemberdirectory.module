@@ -1,0 +1,563 @@
+<?php
+
+/**
+ * Implements hook_init
+ *
+ * Load these header files
+ */
+function netmemberdirectory_init(){
+
+    //set up cron job check
+    module_load_include('inc', 'netmemberdirectory', 'form.menu');
+	if(!isset($_GET['runSyncNow']) && !isset($_GET['runGeoCodeSync'])) {
+
+		if (_netmemberdirectory_should_sync()) {
+            _netmemberdirectory_call_curl("/netmemberdirectory/ajax?runSyncNow=1");
+		}else if(_netmemberdirectory_should_run_geocode_sync()){
+            _netmemberdirectory_call_curl("/netmemberdirectory/ajax?runGeoCodeSync=1");
+        }
+
+		//add to header of every page
+		$moduleFolder = base_path() . drupal_get_path('module', 'netmemberdirectory');
+// 		drupal_add_css($moduleFolder.'/jsAndCSS/datatables.min.css', 'file');
+// 		drupal_add_css($moduleFolder. '/jsAndCSS/netmemberdirectory_styles.css', 'file');
+		drupal_add_js($moduleFolder . '/jsAndCSS/dataTableManager.js', 'file');
+		drupal_add_js($moduleFolder . '/jsAndCSS/datatables.min.js', 'file');
+		drupal_add_js($moduleFolder . '/jsAndCSS/googleMapsManager.js', 'file');
+	}
+    return;
+}
+
+function _netmemberdirectory_call_curl($path){
+    //visit the page and kill the connection. This is to start the sync in another instance
+    //as it can be slow and a user may have to wait a long time before the page would load.
+    $ch = curl_init();
+
+
+	global $base_url;
+	// set URL and other appropriate options
+    curl_setopt($ch, CURLOPT_URL, $base_url . $path);
+    curl_setopt($ch, CURLOPT_HEADER, 0);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 1);
+
+
+    curl_exec($ch);
+
+    // free resources
+    curl_close($ch);
+}
+
+function _netmemberdirectory_should_sync(){
+
+//	module_load_include('inc', 'netmemberdirectory', 'form.menu');
+	module_load_include('inc', 'netmemberdirectory', 'SoapAndDBUtils');
+
+//	variable_set('netmemberdirectory_last_sync', \NetMemberDirectory\Menu::$NEVER); //TODO remove this  - for testing only
+
+	$lastSynced = variable_get('netmemberdirectory_last_sync', \NetMemberDirectory\Menu::$NEVER);
+
+	//date format = m/d/Y h:i:sa
+	$syncFreq = variable_get('netmemberdirectory_sync_freq', \NetMemberDirectory\Menu::$NEVER);
+	if($syncFreq != \NetMemberDirectory\Menu::$NEVER){
+		//$lastDate = (new DateTime('@'.$lastSynced));
+		$lastDate = null;
+		$waitTime = null;
+		if($lastSynced != \NetMemberDirectory\Menu::$NEVER){
+			$lastDate = DateTime::createFromFormat("m/d/Y h:i:sa", $lastSynced);
+			switch($syncFreq){
+				case \NetMemberDirectory\Menu::$DAILY:
+					$waitTime = new DateInterval("P1D");
+					break;
+				case \NetMemberDirectory\Menu::$HOURS10:
+					$waitTime = new DateInterval("PT10H");
+					break;
+				case \NetMemberDirectory\Menu::$HOURS6:
+					$waitTime = new DateInterval("PT6H");
+					break;
+				case \NetMemberDirectory\Menu::$HOUR:
+					$waitTime = new DateInterval("PT1H");
+					break;
+				case \NetMemberDirectory\Menu::$MINUTES30:
+					$waitTime = new DateInterval("PT30M");
+					break;
+			}
+		}
+
+		return ($lastSynced == \NetMemberDirectory\Menu::$NEVER
+			|| _netmemberdirectory_date_passed($lastDate, $waitTime));
+
+	}
+
+	return false;
+}
+
+/**
+ * Checks if the time has passed
+ * @param DateTime $lastDate
+ * @param DateInterval $waitTime
+ * @return true if the date has exceeded the wait time,false otherwise
+ */
+function _netmemberdirectory_date_passed($lastDate = null, $waitTime = null){
+
+    if(empty($lastDate) || empty($waitTime)){
+        return false;
+    }
+    $diff = (new DateTime())
+        ->diff($lastDate ->add($waitTime));
+
+    return $diff->invert == 1 ? true : false;
+}
+
+function _netmemberdirectory_should_run_geocode_sync(){
+    module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+
+    $lastSync = variable_get(\NetMemberDirectory\MapsHelper::LAST_SYNCED, '');
+    if($lastSync == ''){
+        return false;
+    }
+
+    $lastSyncDate = \DateTime::createFromFormat("m/d/Y", $lastSync);
+    $waitTime = (new DateInterval("P1D"));
+
+    return _netmemberdirectory_date_passed($lastSyncDate,$waitTime);
+}
+//------------------------[Config Menu Related Functions] -----------------------------------
+/**
+ * Implements hook_menu().
+ */
+function netmemberdirectory_menu() {
+	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+	return \NetMemberDirectory\Menu::menu();
+}
+ 
+ function netmemberdirectory_theme($element, $type, $theme, $path){
+ 	return [
+ 			'netmemberdirectory_manage' => [
+ 					'render element' => 'form',
+ 			]
+ 	];
+ }
+
+ function _netmemberdirectory_validate_file($form, &$form_state){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+ 	\NetMemberDirectory\Menu::validateFile($form, $form_state);
+ }
+ 
+ function theme_netmemberdirectory_manage($variables){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+ 	return \NetMemberDirectory\Menu::manageTheme($variables);
+ }
+ 
+ function netmemberdirectory_manage(){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+ 	return \NetMemberDirectory\Menu::admin_settings_form();
+ }
+ 
+ 
+ 
+ function _netmemberdirectory_sync_settings(){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+ 	return \NetMemberDirectory\Menu::sync_settings_form();
+ }
+ 
+ function _netmemberdirectory_manual_sync_validate($form, &$form_state){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+    \NetMemberDirectory\Menu::manualSyncValidate($form, $form_state);
+ }
+ 
+ function _netmemberdirectory_run_manual_sync($form, &$form_state){
+ 	module_load_include('inc', basename(__FILE__, '.module'),'form.menu');
+ 	\NetMemberDirectory\Menu::runManualSync($form, $form_state);
+ }
+
+function _netmemberdirectory_stop_sync($form, &$form_state){
+	module_load_include('inc', 'netmemberdirectory', 'form.menu');
+	\NetMemberDirectory\Menu::stopSync($form, $form_state);
+}
+
+ 
+//----------------------------------- [Ajax Responses] ----------------------------
+function _netmemberdirectory_maps_ajax(){
+	if(isset($_GET['runSyncNow'])){
+		module_load_include('inc', 'netmemberdirectory', 'SoapAndDBUtils');
+		if(_netmemberdirectory_should_sync()) { //recheck here incase there are multiple requests to this url
+
+
+			$today = new DateTime(); //today
+			$endDate = $today->add(new DateInterval('P1D'))->format("m/d/Y");
+			$startDate= $today->sub(new DateInterval('P1D'))->format("m/d/Y");
+
+			\NetMemberDirectory\SoapAndDBUtils::runSync($startDate, $endDate);
+
+		}
+
+	}else if(isset($_GET['runGeoCodeSync'])){
+		module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+		if(_netmemberdirectory_should_run_geocode_sync()) {
+			\NetMemberDirectory\MapsHelper::cronUpdateAddresses();
+		}
+	}else if (isset($_POST['netmemberdirectory_maps_ajax'])) {
+		$attrs = json_decode($_POST['netmemberdirectory_maps_ajax'], true);
+		module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+		echo \NetMemberDirectory\MapsHelper::getMapsRecordsFromDB($attrs);
+	}else if(isset($_POST['netmemberdirectory_table_ajax'])){
+        $attrs = drupal_json_decode($_POST['netmemberdirectory_table_ajax']);
+        module_load_include('inc', 'netmemberdirectory','SoapAndDBUtils');
+        echo addcslashes(drupal_json_encode(\NetMemberDirectory\SoapAndDBUtils::getRecords($attrs)), "'");
+	}else{
+		echo json_encode('error');
+	}
+	drupal_exit();
+
+}
+
+//-------------------------- [ Short Codes Related Functions] ---------------------
+
+/**
+ * Implements hook_shortcode_info()
+ */
+function netmemberdirectory_shortcode_info(){
+	$shortcodes['member_table'] = [
+			'title' => t('Member Table'),
+			'description' => t('Displays a member table'),
+			'process callback' => 'member_table_process_shortcode',
+			'attributes callback' => 'member_table_shortcode_attributes',
+			'tips callback' => 'member_table_shortcode_tips',
+			'cache' => FALSE,
+	];
+	
+	$shortcodes['member_map'] = [
+			'title' => ('Member Map'),
+			'description' => t('Displays a map listing the members specified'),
+			'process callback' => 'member_map_process_shortcode',
+			'attributes callback' => 'member_map_shortcode_attributes',
+			'tips callback' => 'member_map_shortcode_tips',
+			'cache' => FALSE,
+	];
+	
+	
+	return $shortcodes;
+}
+
+function member_map_process_shortcode($attrs, $text){
+	
+	static $count = 0;
+	
+	$attrs = shortcode_attrs(array(
+			//'class' => 'member_list',
+			'limit' => -1,
+			'display_members_only' => 1,
+			'display_fields' => 'first name, last name, title, email, city, state',
+			'ignore_do_not_display_online' => 0,
+			'filter' => '',
+			'not_filter' => '',
+            'like_filter' => '',
+			'center' => 'United States',
+	),
+			$attrs
+	);
+	
+	$moduleFolder = base_path().drupal_get_path('module', 'netmemberdirectory');
+//	drupal_add_js($moduleFolder.'/jsAndCSS/googleMapsManager.js', 'file');
+//	drupal_add_css($moduleFolder. '/jsAndCSS/netmemberdirectory_styles.css', 'file');
+// 	drupal_add_js("(function ($) { testAlert(".drupal_json_encode($attrs).");"
+// 			."})(jq1113);", 'inline');
+	
+	module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+	//$apiKey = NetMemberDirectory\MapsHelper::MAPS_API_KEY;
+	//drupal_add_js('https://maps.googleapis.com/maps/api/js?key='.$apiKey .'&callback=initMap', 'external');
+ 	//drupal_add_js("setAttrs(".drupal_json_encode($attrs).")", 'inline'); //need to set the attrs for the initMap function
+	
+	$attrs["count"] = $count;
+	
+ 	$attrsJson = drupal_json_encode($attrs);
+ 	
+	$apiKey = variable_get('netmemberdirectory_maps_api_key', '');
+	
+	$output = '';
+	if($count < 1){
+		$output .= <<<EOJ
+	<script defer
+     		 src="https://maps.googleapis.com/maps/api/js?key={$apiKey}&callback=initMap">
+	
+    	</script>
+		<link rel="stylesheet" type="text/css" href="{$moduleFolder}/jsAndCSS/netmemberdirectory_styles.css">
+		<script src="{$moduleFolder}/jsAndCSS/googleMapsManager.js" ></script>
+EOJ;
+	}
+	$output .= <<<EOJ
+		
+		<script type="text/javascript">
+			//<![CDATA[
+				setAttrs({$attrsJson});
+			//]]>
+			</script>
+		
+		
+EOJ;
+
+	
+	$output .= '<div class="netmemberdirectory_map" id="netmemberdirectory_map'. $count .'"></div>';
+	$output .= '<div class="netmemberdirectory_map_info_panel" id="netmemberdirectory_map_info_panel' . $count . '"></div>';
+	$count++;
+	return $output;
+		
+}
+
+/**
+ * Attributes form element for quote shortcode.
+ *
+ * Used by shortcode_wysiwyg module to add form elements for attributes.
+ * @param $form
+ * @param $form_state
+ * @return array
+ */
+function member_map_shortcode_attributes($form, &$form_state) {
+	// 	$form['member_map-'] = array(
+	// 			'#title' => t('Group By Country'),
+	// 			'#type' => 'checkbox',
+	// 			'#states' => array(
+	// 					'visible' => array(
+	// 							':input[name="shortcode"]' => array('checked' => TRUE),
+	// 					),
+	// 			),
+	// 	);
+	// 	$form['member_table-class'] = array(
+	// 			'#title' => t('Group By State'),
+	// 			'#type' => 'checkbox',
+	// 			'#states' => array(
+	// 					'visible' => array(
+	// 							':input[name="shortcode"]' => array('checked' => TRUE),
+	// 					),
+	// 			),
+	// 	);
+
+	// 	$form['member_table-filter'] = array(
+	// 			'#title' => t('Group By State'),
+	// 			'#type' => 'textfield',
+	// 			'#states' => array(
+	// 					'visible' => array(
+	// 							':input[name="shortcode"]' => array('value' => ''),
+	// 					),
+	// 			),
+	// 	);
+
+	// 	return $form;
+	return [];
+}
+
+/**
+ * Provides tip callback for quote Shortcode.
+ * @param $format
+ * @param $long
+ * @return string
+ */
+function member_map_shortcode_tips($format, $long) {
+	$output = array();
+	$output[] = '<p><strong>' . t('[member_map (display_members_only="1 or 0" | filter ="field1=something, field2=something else, ..." | like_filter="field1=pattern, ...")][/member_map]') . '</strong> ';
+	$output[] = t('Displays a google map with listing of tables') . '</p>';
+
+	return implode(' ', $output);
+}
+
+/**
+ * Provides process callback for member_table Shortcode.
+ * @param array $attrs shortcode attributes
+ * @param $text
+ * @return string
+ */
+function member_table_process_shortcode($attrs, $text){
+	static $count = 0;
+
+	$attrs = shortcode_attrs(array(
+			//'class' => 'member_list',
+			'limit' => -1,
+			'display_members_only' => 1,
+			'display_fields' => 'first name, last name, title, email, city, state',
+			'ignore_do_not_display_online' => 0,
+			'thead_color' => '#A1A0A0',
+			'tfoot_color' => '#A1A0A0',
+			'scrollable' => '0',
+			'scroll_height' => '600px',
+			'color' => '-1',
+			'group_by' => '',
+			'filter' => '',
+			'not_filter' => '',
+			'order_table_by' => '',
+            'like_filter' => '',
+	),
+			$attrs
+	);
+
+
+	if($attrs['color'] != -1){
+		$attrs['thead_color'] = $attrs['tfoot_color'] = $attrs['color'];
+	}
+	
+	module_load_include('inc', 'netmemberdirectory','SoapAndDBUtils');
+	
+    $tableHeaders = _netmemberdirectory_getHeadersForTable($attrs);
+
+    if(is_array($tableHeaders)){ //an array means an error message
+        return $tableHeaders[0]; //error message
+    }
+
+	//note: the dupal_add_js and drupal_add_css functions will not work in drupal 8
+	$moduleFolder =  base_path() . drupal_get_path('module', 'netmemberdirectory');
+	
+	//$escapedObj = addcslashes(/*json_encode($tbl_records['results'])*/$jsonObj, "'");
+	$escapedAttr = drupal_json_encode($attrs);
+	$output = <<<EOD
+				<link rel="stylesheet" type="text/css" href="{$moduleFolder}/jsAndCSS/netmemberdirectory_styles.css">
+				<link rel="stylesheet" type="text/css" href="{$moduleFolder}/jsAndCSS/datatables.min.css">
+				<script type="text/javascript">
+					//<![CDATA[
+						(function ($) { 
+							displayTableAjax('{$escapedAttr}', {$count});
+						})(jq1113);
+					//]]>
+				</script>
+				
+				<div class="result_container netmemberdirectory_small">
+					<section>
+						<table id = "fsDataTable{$count}" class="display compact" cellspacing="0" width="100%">
+							<thead 	color="{$attrs['thead_color']}" >
+									<tr>{$tableHeaders}</tr>
+							</thead>
+							<tfoot color="{$attrs['tfoot_color']}" >
+									<tr>{$tableHeaders}</tr>
+							</tfoot>
+						</table>
+					</section>
+				</div>
+EOD;
+	$count++;		
+	return $output;
+}
+
+
+/**
+ * Generates the header for the table
+ * @param $attrs
+ * @return string|array
+ * a string with the header text if there is no issues
+ * an array with the first element containing an error message if there is an error
+ */
+function _netmemberdirectory_getHeadersForTable($attrs){
+    $tableHeaders = '';
+    $fields = [];
+
+    module_load_include('inc', 'netmemberdirectory','SoapAndDBUtils');
+    $displayMapping = \NetMemberDirectory\SoapAndDBUtils::$displayMapping;
+
+    if(!empty($attrs['display_fields'])){
+        foreach(explode(',', $attrs['display_fields']) as $fieldName){
+            $curr = trim($fieldName);
+            if(!isset($displayMapping[$curr])){
+
+                return  ['Incorrect field "'
+                . $curr
+                .'" listed in the shortcode attribute "display_fields". Please check documentation for correct fields'];
+            }
+
+            $fields[]= $displayMapping[$curr];
+            $tableHeaders .= '<td>'.$curr.'</td>';
+        }
+    }
+
+    if(!empty($attrs['group_by'])){
+        $group = explode(",", $attrs['group_by']);
+        if(isset($group[1])){ //should only have 1 group by option
+            return ["Group by field should only have one item listed"];
+        }
+
+        $groupToAdd = trim($group[0]);
+        if(!(isset($displayMapping[$groupToAdd]))){
+            return ['Incorrect field "' . $groupToAdd
+            .'" listed in the shortcode attribute "group_by". Please check the documentation for the correct fields'];
+        }
+
+        //add in this field if it is not already specified
+        if(($groupCol = array_search($displayMapping[$groupToAdd], $fields)) === false){
+            $fields[] = $displayMapping[$groupToAdd];
+            $tableHeaders .= '<td>'.$groupToAdd.'</td>';
+        }
+    }
+    return $tableHeaders;
+}
+
+/**
+ * Impentments hook_jqmulti_files()
+ * @return string
+ */
+function netmemberdirectory_jqmulti_files() {
+	$moduleFolder = base_path() . drupal_get_path('module', 'netmemberdirectory');
+	return array(
+			$moduleFolder.'/jsAndCSS/dataTableManager.js',
+			$moduleFolder.'/jsAndCSS/datatables.min.js',
+			$moduleFolder.'/jsAndCSS/googleMapsManager.js'
+// 			$moduleFolder.'/js/DataTables/DataTables-1.10.10/js/dataTables.bootstrap.min.js'
+// 			'another/full/file/path.js',
+	);
+}
+
+
+/**
+ * Attributes form element for quote shortcode.
+ *
+ * Used by shortcode_wysiwyg module to add form elements for attributes.
+ * @param $form
+ * @param $form_state
+ * @return array
+ */
+
+function member_table_shortcode_attributes($form, &$form_state) {
+	return [];
+
+/*
+	$form['member_table-author'] = array(
+			'#title' => t('Group By Country'),
+			'#type' => 'checkbox',
+			'#states' => array(
+					'visible' => array(
+							':input[name="shortcode"]' => array('checked' => TRUE),
+					),
+			),
+	);
+	$form['member_table-class'] = array(
+			'#title' => t('Group By State'),
+			'#type' => 'checkbox',
+			'#states' => array(
+					'visible' => array(
+							':input[name="shortcode"]' => array('checked' => TRUE),
+					),
+			),
+	);
+	
+	$form['member_table-filter'] = array(
+			'#title' => t('Group By State'),
+			'#type' => 'textfield',
+			'#states' => array(
+					'visible' => array(
+							':input[name="shortcode"]' => array('value' => ''),
+					),
+			),
+	);
+
+	return $form;*/
+}
+
+
+/**
+ * Provides tip callback for quote Shortcode.
+ * @param $format
+ * @param $long
+ * @return string
+ */
+function member_table_shortcode_tips($format, $long) {
+	$output = array();
+	$output[] = '<p><strong>' . t('[member_table (display_members_only="1 or 0" | filter ="field1=something, field2=something else, ..." | like_filter="field1=pattern, ..." | group_by="field") /]') . '</strong> ';
+	$output[] = t('Displays a member directory table') . '</p>';
+
+	return implode(' ', $output);
+}

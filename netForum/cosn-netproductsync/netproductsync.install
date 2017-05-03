@@ -1,0 +1,372 @@
+<?php
+
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the netForum product and sync module;
+ * Date : 1st Nov'2016;
+ *
+ * Author : Vinek T.;
+ *
+ */
+
+
+/**
+ * Implements hook_schema().
+ */
+function netproductsync_schema() {
+	$schema['netforum_setting'] = array(
+	    'description' => 'To set the product-sync settings.',
+	    'fields' => array(
+			'id' => array(
+				'type' => 'serial',
+				'length' => 11,
+				'not null' => TRUE,
+			),
+			'sync_frequency' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'product_type_inc' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'product_type_exc' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'stored_product' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'remove_fromdate' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'created' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'crontime' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'status' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+		),
+		'primary key' => array('id'),
+		'auto increment' => 1,
+	);
+	//Check if table exists, if not install the schema.
+	if(db_table_exists('netforum_product_sync') == FALSE) {
+		$schema['netforum_product_sync'] = array(
+		    'description' => 'To get all the product details in it.',
+		    'fields' => array(
+				'pid' => array(
+					'type' => 'serial',
+					'length' => 11,
+					'not null' => TRUE,
+				),
+				'prd_key' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_type' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_code' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_name' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_img_name' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_mem_price' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_non_price' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'mer_category' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_inactive_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_post_online_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_post_to_web_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_remove_from_web_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_taxable_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_shippable_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_inventory_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_quantity_on_hand' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_quantity_available' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_quantity_commited' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_allow_waitlist_oversale_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_start_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_end_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_feature_start_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_feature_end_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_show_as_new_from' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_show_as_new_until' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,	
+				),
+				'prd_members_only' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_viewable_to_all_flag' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_order' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_add_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_change_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_description' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_key_words' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'prd_dowanload_url' => array(
+					'type' => 'varchar',
+					'length' => 1000,
+					'not null' => FALSE,
+				),
+				'sync_date' => array(
+					'type' => 'varchar',
+					'length' => 500,
+					'not null' => FALSE,
+				),
+				'status' => array(
+					'type' => 'int',
+					'length' => 11,
+					'not null' => FALSE,
+				),
+			),
+			'primary key' => array('pid'),
+			'auto increment' => 1,
+		);
+	}
+	//Check if table exists, if not install the schema.
+	if(db_table_exists('netforum_product_detaildesc') == FALSE) {
+		$schema['netforum_product_detaildesc'] = array(
+		    'description' => 'To set the product-details-description.',
+		    'fields' => array(
+				'id' => array(
+					'type' => 'serial',
+					'length' => 11,
+					'not null' => TRUE,
+				),
+				'prd_key' => array(
+					'type' => 'text',
+					'size' => 'big',
+				),
+				'prd_description_html' => array(
+					'type' => 'text',
+					'size' => 'big',
+				),
+			),
+			'primary key' => array('id'),
+			'auto increment' => 1,
+		);
+	}
+	return $schema;
+} 
+// 'mysql_type' => 'DATETIME',
+// 'not null' => TRUE
+
+/**
+ * Install the Drupal module and insert the record into the table;
+ */
+function netproductsync_install() {
+	$created = date("Y-m-d H:i");
+	db_insert('netforum_setting')
+	->fields(array(
+		'sync_frequency' => 'Hourly',
+		'stored_product' => 1,
+		'remove_fromdate' => 0,
+		'created' => $created,
+		'status' => 0,
+	))
+	->execute();
+
+	db_insert('netforum_setting')
+	->fields(array(
+		'sync_frequency' => 'Hourly',
+		'product_type_inc' => 'Last 48 hours',
+		'product_type_exc' => 0,
+		'stored_product' => 0,
+		'remove_fromdate' => 0,
+		'created' => $created,
+		'status' => 1,
+	))
+	->execute();
+	// drupal_set_message(t('Selected netForum module has been successfully installed.'));
+}
+
+
+/**
+ * Uninstal the Drupal module, clear out any variables
+ */
+function netproductsync_uninstall() {
+	variable_del('id');
+	variable_del('sync_frequency');
+	variable_del('product_type_inc');
+	variable_del('product_type_exc');
+	variable_del('stored_product');
+	variable_del('remove_fromdate');
+	variable_del('created');
+	variable_del('crontime');
+	variable_del('status');
+
+	// variable_del('pid');
+	// variable_del('prd_key');
+	// variable_del('prd_key');
+	// variable_del('prd_type');
+	// variable_del('prd_code');
+	// variable_del('prd_name');
+	// variable_del('prd_img_name');
+	// variable_del('prd_mem_price');
+	// variable_del('prd_non_price');
+	// variable_del('mer_category');
+	// variable_del('prd_inactive_flag');
+	// variable_del('prd_post_online_flag');
+	// variable_del('prd_post_to_web_date');
+	// variable_del('prd_remove_from_web_date');
+	// variable_del('prd_taxable_flag');
+	// variable_del('prd_shippable_flag');
+	// variable_del('prd_inventory_flag');
+	// variable_del('prd_quantity_on_hand');
+	// variable_del('prd_quantity_available');
+	// variable_del('prd_quantity_commited');
+	// variable_del('prd_allow_waitlist_oversale_flag');
+	// variable_del('prd_start_date');
+	// variable_del('prd_end_date');
+	// variable_del('prd_feature_start_date');
+	// variable_del('prd_feature_end_date');
+	// variable_del('prd_show_as_new_from');
+	// variable_del('prd_show_as_new_until');
+	// variable_del('prd_members_only');
+	// variable_del('prd_viewable_to_all_flag');
+	// variable_del('prd_order');
+	// variable_del('prd_add_date');
+	// variable_del('prd_change_date');
+	// variable_del('prd_description');
+	// variable_del('prd_key_words');
+	// variable_del('prd_dowanload_url');
+	// variable_del('sync_date');
+	// variable_del('status');
+
+	// variable_del('prd_description_html');
+	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+}
