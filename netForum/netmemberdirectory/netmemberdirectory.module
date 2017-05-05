@@ -37,23 +37,55 @@ function netmemberdirectory_menu() {
 		'type' => MENU_CALLBACK
 	);
 	$items['admin/config/netforum/netmemberdirectory/settings'] = array(
+		'title' => 'netForum Member Directory Import Settings',
+		'description' => 'Allow settings to import member directory from file',
+		'access arguments' => array('administer site configuration'),
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('netmemberdirectory_manage'),
+		'weight' => 2
+	);
+	$items['admin/config/netforum/netmemberdirectory/importsettings'] = array(
 		'title' => 'netForum Member Directory Sync Settings',
 		'description' => 'Allow API for sync member directory from netForum',
 		'access arguments' => array('administer site configuration'),
 		'page callback' => 'drupal_get_form',
 		'page arguments' => array('netmemberdirectory_sync_settings'),
-		'weight' => 2
-	);
-	$items['admin/config/netforum/netmemberdirectory/importsettings'] = array(
-		'title' => 'netForum Member Directory Import Settings',
-		'description' => 'Allow settings to import member directory from file',
-		'access arguments' => array('administer site configuration'),
-		'page callback' => 'drupal_get_form',
-		'page arguments' => array('netmemberdirectory_import_settings'),
 		'weight' => 3
 	);
 	return $items;
 }
+
+/**
+ * Menu callback for netmemberdirectory_maps_ajax().
+ */
+// function netmemberdirectory_maps_ajax(){
+// 	if(isset($_GET['runSyncNow'])){
+// 		module_load_include('inc', 'netmemberdirectory', 'SoapAndDBUtils');
+// 		if(_netmemberdirectory_should_sync()) { //recheck here incase there are multiple requests to this url
+// 			$today = new DateTime(); //today
+// 			$endDate = $today->add(new DateInterval('P1D'))->format("m/d/Y");
+// 			$startDate= $today->sub(new DateInterval('P1D'))->format("m/d/Y");
+
+// 			\NetMemberDirectory\SoapAndDBUtils::runSync($startDate, $endDate);
+// 		}
+// 	} elseif (isset($_GET['runGeoCodeSync'])){
+// 		module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+// 		if(_netmemberdirectory_should_run_geocode_sync()) {
+// 			\NetMemberDirectory\MapsHelper::cronUpdateAddresses();
+// 		}
+// 	} elseif (isset($_POST['netmemberdirectory_maps_ajax'])) {
+// 		$attrs = json_decode($_POST['netmemberdirectory_maps_ajax'], true);
+// 		module_load_include('inc', 'netmemberdirectory', 'maps.netmemberdirectory');
+// 		echo \NetMemberDirectory\MapsHelper::getMapsRecordsFromDB($attrs);
+// 	} elseif (isset($_POST['netmemberdirectory_table_ajax'])) {
+//         $attrs = drupal_json_decode($_POST['netmemberdirectory_table_ajax']);
+//         module_load_include('inc', 'netmemberdirectory','SoapAndDBUtils');
+//         echo addcslashes(drupal_json_encode(\NetMemberDirectory\SoapAndDBUtils::getRecords($attrs)), "'");
+// 	} else {
+// 		echo json_encode('error');
+// 	}
+// 	drupal_exit();
+// }
 
 /**
  * Implements hook_cron().
@@ -78,6 +110,7 @@ function netmemberdirectory_sync_settings($form, &$form_state) {
 		'#suffix' => '</p>',
 	);
 
+	/*---- Sync Info -----*/
 	$form['sync_info'] = array(
 		'#title' => 'Sync Info & Settings',
 		'#description' => '',
@@ -88,26 +121,29 @@ function netmemberdirectory_sync_settings($form, &$form_state) {
 	$form['sync_info']['memdir_last_sync'] = array(
 		'#markup' => '<p>Last Synced : <strong>'.variable_get('memdir_last_sync').'</strong></p>', 
 	);
-	
-	/*---- Sync Info -----*/
-	// if (variable_get('memdir_run_sync') == 1) {
-	// 	if (variable_get('memdir_sync_freq') == "Never") {
-	// 		$sync_status = 'No Sync Running';
-	// 	} else {
-	// 		$sync_status = 'Sync in Progress';
-	// 	}
-	// } else {
-	// 	$sync_status = 'No Sync Running';
-	// }
-
-	// $form['sync_info']['memberdir_sync_status'] = array(
-	// 	'#markup' => '<p>'.$sync_status.'</p>',
-	// );
-	// $form['sync_info']['memberdir_stop_sync'] = array(
-	// 	'#value' => t('Stop Running Sync'),
-	// 	'#type' => 'submit',
-	// 	'#submit' => ['netmemberdirectory_stop_sync'],
-	// );
+	if (variable_get('memdir_run_sync') == 1) {
+		if (variable_get('memdir_sync_freq') == "Never") {
+			$sync_status = 'No Sync Running';
+			$form['sync_info']['memberdir_sync_status'] = array(
+				'#markup' => '<p>'.$sync_status.'</p>',
+			);
+		} else {
+			$sync_status = 'Sync in Progress';
+			$form['sync_info']['memberdir_sync_status'] = array(
+				'#markup' => '<p>'.$sync_status.'</p>',
+			);
+			$form['sync_info']['memberdir_stop_sync'] = array(
+				'#value' => t('Stop Running Sync'),
+				'#type' => 'submit',
+				'#submit' => ['netmemberdirectory_stop_sync'],
+			);		
+		}
+	} else {
+		$sync_status = 'No Sync Running';
+		$form['sync_info']['memberdir_sync_status'] = array(
+			'#markup' => '<p>'.$sync_status.'</p>',
+		);
+	}
 	/*---- Sync Info Ends -----*/
 
 	/*---- Sync Settings -----*/
@@ -123,13 +159,13 @@ function netmemberdirectory_sync_settings($form, &$form_state) {
 		'#description'   => t('How often do you want drupal to sync records from netFORUM'),
 		'#type'          => 'select',
 		'#options'		 => $options,
-		'#default_value' => variable_get('memdir_sync_freq'),
+		'#default_value' => variable_get('sync_frequency'),
 	);
 	$form['sync_info']['google_map_code'] = array(
 		'#title'         => t('Google Maps API Key'),
 		'#description'   => t('Enter your Google Map API key in order to use the Google Maps display'),
 		'#type'          => 'textfield',
-		'#default_value' => variable_get('memdir_maps_api_key'),
+		'#default_value' => variable_get('google_map_code'),
 	);
 	/*---- Sync Settings Ends -----*/
 
@@ -158,12 +194,7 @@ function netmemberdirectory_sync_settings($form, &$form_state) {
 	);
 	/*---- Manual Sync Settings Ends -----*/
 
-	$form['submit_save_settings'] = array(
-		'#type' => 'submit',
-		'#value' => t('Save Settings'),
-	);
-	// return system_settings_form($form);
-	return $form;
+	return system_settings_form($form);
 }
 
 /**
@@ -174,35 +205,8 @@ function netmemberdirectory_sync_settings($form, &$form_state) {
  */
 function netmemberdirectory_stop_sync() {
 	variable_set('memdir_stop_sync', 1);
-	sleep(8);
+	sleep(4);
 	variable_set('memdir_run_sync', 0);
-}
-
-/**
- * Callback function for netmemberdirectory_sync_settings() to save the settings to database table.
- *
- * @param $form
- * @param $form_state
- */
-function netmemberdirectory_sync_settings_submit($form, &$form_state) {
-	$updated = date("Y-m-d H:i");
-	$sync_frequency = $form_state['values']['sync_frequency'];
-	$google_map_code = $form_state['values']['google_map_code'];
-	
-	sleep(2);
-	// Here you can update your custom form values into your custom table.
-	db_update('fs_netmemberdir_settings')
-	->fields(array(
-		'sync_frequency' => $sync_frequency,
-		'google_map_code' => $google_map_code,
-		'updated' => $updated,
-	))
-	->condition ('id', 1)
-	->execute();
-	
-	variable_set('memdir_sync_freq', $sync_frequency);
-	variable_set('memdir_maps_api_key', $google_map_code);
-	drupal_set_message("Settings has been saved successfully.");
 }
 
 /**
@@ -245,8 +249,9 @@ function netmemberdirectory_manual_sync_validate($form, &$form_state) {
 function netmemberdirectory_run_manual_sync($form, &$form_state) {
 	global $record_limit;
 
-	$current = date("Y-m-d H:i");
+	$current = (new DateTime())->format("m/d/Y h:i:sa");
 	variable_set('memdir_last_sync', $current);
+	variable_set('memdir_run_sync', 0);
 	// $last_cron = db_select('watchdog')->fields('watchdog',array('timestamp'))->orderBy('timestamp', 'DESC')->range(0,1)->execute()->fetchField();
 	// $cron_last = variable_get('cron_last', time());
 
@@ -264,7 +269,7 @@ function netmemberdirectory_run_manual_sync($form, &$form_state) {
 	$syncComplete = runSync($startDate, $endDate);
 	if($syncComplete === true) {
 		drupal_set_message("Member Directory Sync Complete");
-	} elseif($syncComplete == variable_set('memdir_run_sync')) {
+	} elseif($syncComplete == variable_set('memdir_run_sync', 1)) {
 		drupal_set_message("Sync already running, please wait until it completes or stop it before proceeding	", 'warning');
 	} else {
 		drupal_set_message("Member Directory Sync Stopped. Please retry if this was not intentional.", 'warning');
@@ -278,13 +283,59 @@ function netmemberdirectory_run_manual_sync($form, &$form_state) {
  * @param $form
  * @param $form_state
  */
-function netmemberdirectory_import_settings($form, &$form_state) {
+function netmemberdirectory_manage($form, &$form_state) {
+	$form['netmemberdirectory_overview'] = array(
+		'#markup' => t('Manage netFORUM Member Directory Settings.'),
+		'#prefix' => '<p>',
+		'#suffix' => '</p>',
+	);
 
+	$count = 1;		
+	$form['#tree'] = TRUE;
+	$mappingForImport = getImportMapping();
+	foreach ($mappingForImport as $id => $currField ){
+		$form['slides'][$count]['id'] = array(
+			'#type' => 'hidden',
+			'#default_value' => $count,
+		);
+		$form['slides'][$count]['field_name'] = array(
+			'#type' => 'hidden',
+			'#default_value' => $id,
+		);
+		$form['slides'][$count]['field'] = array(
+			'#markup' => t($currField),
+		);
+		$form['slides'][$count]['ignore_value'] = array(
+			'#type' => 'checkbox',
+		);
+		$form['slides'][$count]['weight'] = array(
+			'#type' => 'weight',
+			'#title' => t('Weight'),
+			'#title_display' => 'invisible',
+			'#default_value' => $count,
+			'#delta' => 30,
+		);
+		$count++;
+	}
+
+	$form['import_file'] = array(
+		'#type' => 'file',
+		'#title' => t('Upload file (.csv) to import'),
+		'#element_validate' => array('netmemberdirectory_validateFile'),
+		'#upload_location' => 'public://tmp/',
+		'#upload_validators' => array(
+			'file_validate_extensions' => array('csv'),
+		),
+	);
+
+	$form['importButton'] = array(
+		'#type' => 'submit',
+		'#value' => t('Import File'),
+	);
+	return $form;
 }
 
-
 /*=========== Helper Functions ===========*/
-
 /**
  * Splits the current date in half if the startDate and endDate are more than 48 hrs apart
  * @param string $startDate must be an earlier date than the end date
@@ -302,8 +353,9 @@ function splitDate($startDate, $endDate){
     $end = DateTime::createFromFormat("m/d/Y", $endDate);
     $end = $end->getTimestamp();
 
-    if($start > $end || $start + 172800 > $end){ //check if the dates were reversed
-        // or if the startdate is within 48 hrs (172800 seconds) of the end date
+    if($start > $end || $start + 172800 > $end) { 
+    	//check if the dates were reversed or if the startdate is within 48 hrs (172800 seconds) 
+    	// of the end date
         return $endDate;
     }
 
@@ -321,34 +373,31 @@ function splitDate($startDate, $endDate){
  * false - if it was stopped and running sync - if the sync is still running
  */
 function runSync($startDate, $endDate){
-    $today = (new DateTime())->format("m/d/Y h:i:sa");
+    $today = new DateTime()->format("m/d/Y h:i:sa");
     $syncComplete = true;
-
-    // if(variable_get('memdir_run_sync') == 1){
-    //     return variable_get('memdir_run_sync');
-    // }
+    if(variable_get('memdir_run_sync') == 1){
+        return variable_get('memdir_run_sync');
+    }
     
     variable_set('memdir_run_sync', 1);
     try {
         variable_set('memdir_stop_sync', 1);
         sleep(2);
-        variable_set('memdir_run_sync', 0);
-
+        variable_set('memdir_run_sync', 0);	
 		runCstSync($startDate, $endDate);
-		// runOrgSync($startDate, $endDate);
+		runOrgSync($startDate, $endDate);
 		variable_set('memdir_last_sync', $today);
-    	$syncComplete = true;
 	} 
 	catch(Exception $e) {
         drupal_set_message($e->getMessage(), 'error');
     } 
-	// finally {
-	// 	variable_set('memdir_run_sync', '0');
-	// 	if(shouldNotSync()){
-	// 		variable_set('memdir_stop_sync', 0); //reset this variable as it is currently 1
-	// 		$syncComplete = false;
-	// 	}
-	// }
+	finally {
+		variable_set('memdir_run_sync', '0');
+		if(shouldNotSync()){
+			variable_set('memdir_stop_sync', 0); //reset this variable as it is currently 1
+			$syncComplete = false;
+		}
+	}
     return $syncComplete;
 }
 
@@ -358,11 +407,14 @@ function runSync($startDate, $endDate){
  * @param $startDate
  * @param $endDate
  */
-function runCstSync($startDate, $endDate){
-    $max_e_time = ini_get("max_execution_time");
+function runCstSync($startDate, $endDate) {
+	if(shouldNotSync()){
+		return;
+	}
+
 	$authToken = _netforum_authenticate();
 	$cstRecords = _netforumGetIndividualChangesByDate($authToken,$startDate,$endDate);
-	if(isset($cstRecords['ind_cst_key'])) { //in the case there is only one record the structure is not a list of array
+	if(isset($cstRecords['ind_cst_key'])){ //in the case there is only one record the structure is not a list of array
 		$cstRecords = array($cstRecords);
 	} else {
 		$cstRecords = (array) $cstRecords;
@@ -370,10 +422,17 @@ function runCstSync($startDate, $endDate){
 
 	$record_limit = 500;
 	$recordCount = count($cstRecords);
+	if($recordCount >= $record_limit){
+		$midDate = splitDate($startDate, $endDate);
+		if($midDate != $endDate ) {
+			runCstSync($startDate, $midDate);
+			runCstSync($midDate, $endDate);
+			return;
+		}
+	}
 	$count = 0;
 	foreach ($cstRecords as $cResults) {
-		// if ($count == 50) break;
-		set_time_limit(60);
+		// if ($count == 10) break;
 		if ($cResults['ind_delete_flag'] != 0) {
 			db_delete('fs_netmemberdir_sync')->condition('external_id', (string)$cResults['ind_cst_key'])->execute();
 		} else {
@@ -394,7 +453,7 @@ function runCstSync($startDate, $endDate){
 			$designation = (empty($cResults['ind_designation'])) ? '' : $cResults['ind_designation'];
 			$employment_org = (empty($cResults['cst_org_name_dn'])) ? '' : $cResults['cst_org_name_dn'];
 			$member_code = (empty($custInf['ProductCode'])) ? '' : $custInf['ProductCode'];
-
+			
 			$data = array(
 				'external_id' => $cResults['ind_cst_key'], 
 				'name' => $cResults['ind_first_name'], 
@@ -419,16 +478,14 @@ function runCstSync($startDate, $endDate){
 				'recv_benefits' => $cResults['cst_receives_benefits_flag'], 
 				'member_code' => $member_code
 			);
-			// $queryRes = db_insert('fs_netmemberdir_sync')->fields($data)->execute();
+
 			$queryRes = getGeoCodeAndStoreData($data);
 			if ($queryRes === false) {
-				drupal_set_message("An error occured attempting to write the customer with cst_key: ".$custInf->ind_cst_key." to the database", "error");
+				drupal_set_message("An error occured attempting to write the customer with cst_key: ".$custInf['ind_cst_key']." to the database", "error");
 			}
 		}
 		$count++;
-		if(($count %20)==0) { sleep(2); }
 	}
-	set_time_limit($max_e_time);
 }
 
 /**
@@ -437,151 +494,74 @@ function runCstSync($startDate, $endDate){
  * @param $startDate
  * @param $endDate
  */
-// function runOrgSync($startDate, $endDate){
-//     $max_e_time = ini_get("max_execution_time");
-//     $authToken = _netforum_authenticate();
-//     $cstRecords = _netforumGetOrganizationChangesByDate($authToken,$startDate,$endDate);
-//     if(isset($cstRecords['org_cst_key'])){ //in the case there is only one record the structure is not a list of objects
-//         $cstRecords = array($cstRecords);
-//     } else {
-//         $cstRecords = (array) $cstRecords;
-//     }
-
-//     $recordCount = count($cstRecords);
-//     $count = 0;
-//     foreach ($cstRecords as $currRes) {
-//     	set_time_limit(60);
-//         if ($currRes['org_delete_flag'] != 0) {
-//             db_delete('fs_netmemberdir_sync')->condition('external_id', (string)$currRes['org_cst_key'])->execute();
-//         } else {
-//         	$fullObj = _netforum_getCustByKey($currRes['org_cst_key']);
-//         	$email = (empty($currRes['eml_address'])) ? '' : $currRes['eml_address'];
-// 			$address1 = (empty($fullObj['AddressLine1'])) ? '' : $fullObj['AddressLine1'];
-// 			$address2 = (empty($fullObj['AddressLine2'])) ? '' : $fullObj['AddressLine2'];
-// 			$address3 = (empty($fullObj['AddressLine3'])) ? '' : $fullObj['AddressLine3'];
-// 			$city = (empty($fullObj['AddressCity'])) ? '' : $fullObj['AddressCity'];
-// 			$state = (empty($fullObj['AddressState'])) ? '' : $fullObj['AddressState'];
-// 			$zipcode = (empty($fullObj['AddressZip'])) ? '' : $fullObj['AddressZip'];
-// 			$country = (empty($fullObj['adr_country'])) ? '' : $fullObj['adr_country'];
-// 			$phone_no = (empty($currRes['phn_number_complete'])) ? '' : $currRes['phn_number_complete'];
-// 			$employment_org = (empty($currRes['cst_sort_name_dn'])) ? '' : $currRes['cst_sort_name_dn'];
-// 			$member_code = (empty($fullObj['member_code'])) ? '' : $fullObj['member_code'];
-
-//         	$data = array(
-//                 'external_id' => $currRes['org_cst_key'],
-//                 'email' => $email,
-//                 'address1' => $address1, 
-// 				'address2' => $address2,
-// 				'address3' => $address3,
-//                 'city' => $city, 
-//                 'state' => $state, 
-//                 'zipcode' => $zipcode,
-//                 'country' => $country, 
-//                 'phone_no' => $phone_no, 
-//                 'employment_org' => $employment_org,
-//                 'do_not_publish_online' => $currRes['cst_no_publish_flag'], 
-//                 'is_member' => $currRes['cst_member_flag'],
-//                 'recv_benefits' => $fullObj['cst_receives_benefits_flag'], 
-//                 'cst_type' => $currRes['cst_type'], 
-//                 'member_code' => $member_code
-//             );
-// 			$queryRes = db_insert('fs_netmemberdir_sync')->fields($data)->execute();
-// 		}
-// 		$count++;
-// 		if(($count %20)==0) { sleep(2); }
-// 	}
-// 	set_time_limit($max_e_time);
-// }
-
-/**
- * Function to clean and sanitize data
- */
-function cleanString($str){
-	return iconv("UTF-8", "UTF-8//IGNORE", $str);
-}
-function sanitizeData(&$arrayIn){
-	array_walk($arrayIn, function(&$value){
-		$value = cleanString($value);
-	});
-}
-
-/**
- * @param string $address the properly formatted address to be converted into a lat
- * @return array | string if successful returns an associative array with fields "lat" and "lng", otherwise a string with the error
- */
-function geocode($address){
-	$address = urlencode($address);
-	$url = "http://maps.google.com/maps/api/geocode/json?address=".$address."&sensor=false";
-	$geoInfo = getCurlRequest($url);
-	if(empty($address)){
-		return $no_addr = "NO_ADDRESS";
+function runOrgSync($startDate, $endDate) {
+	if(shouldNotSync()){
+		return;
 	}
-	usleep(120000); //sleep for ~ 0.12 of a second since there you can only make 10 request per second
-
-	if($geoInfo['status'] == "OK"){
-		return $geoInfo['results'][0]['geometry']['location'];
+	
+	$authToken = _netforum_authenticate();
+    $cstRecords = _netforumGetOrganizationChangesByDate($authToken,$startDate,$endDate);
+    if(isset($cstRecords['org_cst_key'])){ //in the case there is only one record the structure is not a list of array
+		$cstRecords = array($cstRecords);
 	} else {
-		return $geoInfo['status'];
+		$cstRecords = (array) $cstRecords;
 	}
-}
 
-/**
- * Builds an address in a for that can be geocoded based on a database record
- * @param array $record
- * @return array | string if successful returns an associative array with fields "lat" and "lng", otherwise a string with the error
- */
-function geoCodeRecord($record){
-	$geo_city = empty($record['city']) ? '' : ($record['city'] . ', ');
-	$geo_state = empty($record['state']) ? '' : ($record['state'] . ', ');
-	$geo_zip = empty($record['zipcode']) ? '' : ($record['zipcode'] . ' ');
-	$geo_country = empty($record['country']) ? '' : ($record['country']);
+	$record_limit = 500;
+	$recordCount = count($cstRecords);
+	if($recordCount >= $record_limit){
+		$midDate = splitDate($startDate, $endDate);
+		if($midDate != $endDate ) {
+			runOrgSync($startDate, $midDate);
+			runOrgSync($midDate, $endDate);
+			return;
+		}
+	}
+	$count = 0;
+    foreach ($cstRecords as $currRes) {
+    	// if ($count == 10) break;
+    	if ($currRes['org_delete_flag'] != 0) {
+            db_delete('fs_netmemberdir_sync')->condition('external_id', (string)$currRes['org_cst_key'])->execute();
+        } else {
+        	$fullObj = _netforum_getCustByKey($currRes['org_cst_key']);
+        	$email = (empty($currRes['eml_address'])) ? '' : $currRes['eml_address'];
+			$address1 = (empty($fullObj['AddressLine1'])) ? '' : $fullObj['AddressLine1'];
+			$address2 = (empty($fullObj['AddressLine2'])) ? '' : $fullObj['AddressLine2'];
+			$address3 = (empty($fullObj['AddressLine3'])) ? '' : $fullObj['AddressLine3'];
+			$city = (empty($fullObj['AddressCity'])) ? '' : $fullObj['AddressCity'];
+			$state = (empty($fullObj['AddressState'])) ? '' : $fullObj['AddressState'];
+			$zipcode = (empty($fullObj['AddressZip'])) ? '' : $fullObj['AddressZip'];
+			$country = (empty($fullObj['adr_country'])) ? '' : $fullObj['adr_country'];
+			$phone_no = (empty($currRes['phn_number_complete'])) ? '' : $currRes['phn_number_complete'];
+			$employment_org = (empty($currRes['cst_sort_name_dn'])) ? '' : $currRes['cst_sort_name_dn'];
+			$member_code = (empty($fullObj['member_code'])) ? '' : $fullObj['member_code'];
 
-	$address = trim( $geo_city.$geo_state.$geo_zip.$geo_country, " \t\n\r\0\x0B,");
-	return geocode($address);
-}
+        	$data = array(
+                'external_id' => $currRes['org_cst_key'],
+                'email' => $email,
+                'address1' => $address1, 
+				'address2' => $address2,
+				'address3' => $address3,
+                'city' => $city, 
+                'state' => $state, 
+                'zipcode' => $zipcode,
+                'country' => $country, 
+                'phone_no' => $phone_no, 
+                'employment_org' => $employment_org,
+                'do_not_publish_online' => $currRes['cst_no_publish_flag'], 
+                'is_member' => $currRes['cst_member_flag'],
+                'recv_benefits' => $fullObj['cst_receives_benefits_flag'], 
+                'cst_type' => $currRes['cst_type'], 
+                'member_code' => $member_code
+            );
 
-/**
- * Callback function getGeoCodeAndStoreData() to store the data into database by runCstSync() and
- * runOrgSync() from netForum account.
- *
- * @param array $record
- */
-function getGeoCodeAndStoreData($record) {
-	sanitizeData($record);
-	$record["latitude"] = null;
-	$record["longitude"] = null;
-
-	$geoCodeLimit = false;
-	if (!$geoCodeLimit) {
-		//format the address in a way that is readable for the google maps geolocation api
-		$retry = 0;
-		do {
-			$latLng = geoCodeRecord($record);
-			if (!is_array($latLng)) {
-				//will need to do geocoding another day when the quota is refreshed
-				if ($latLng == "OVER_QUERY_LIMIT") {
-					$geoCodeLimit = true;
-				} elseif ($latLng == "UNKNOWN_ERROR") {
-					$retry++;
-				}
-			} else {
-				$record['latitude'] = $latLng['lat'];
-				$record['longitude'] = $latLng['lng'];
+            $queryRes = getGeoCodeAndStoreData($data);
+			if ($queryRes === false) {
+				drupal_set_message("An error occured attempting to write the customer with cst_key: ".$fullObj['ind_cst_key']." to the database", "error");
 			}
-		} 
-		while ($retry == 1);//allow 1 retry
+		}
+		$count++;
 	}
-
-	if($geoCodeLimit){
-		$today = (new DateTime())->format('m/d/Y');
-		variable_set('memdir_last_sync', $today);
-	}
-	if(trim($record['country']) == "USA"){
-		$record['country'] = "United States";
-	}
-
-	$record['datechanged'] = (new DateTime())->format('Y-m-d H:i:s');
-	return $queryRes = db_merge('fs_netmemberdir_sync')->key(['external_id'=>$record['external_id']])->fields($record)->execute();
 }
 
 /**
@@ -654,9 +634,9 @@ function shouldNotSync(){
  * @return mixed the value of the variable
  */
 function getVariableFromDBEvery10Calls($name, $default){
-    static $currCount = 0;
-
+    $currCount = 0;
     $cacheCount = 10;
+    
     if($currCount++ % $cacheCount == 0) {
         return getVariableFromDB($name, $default);
     } else {
@@ -672,14 +652,260 @@ function getVariableFromDBEvery10Calls($name, $default){
  * @return mixed the value of the variable
  */
 function getVariableFromDB($name, $default){
-	$query = db_select('variable', 'var')
-	        ->fields('var', ['name', 'value'])
-	        ->condition('var.name', $name)
-	        ->execute()
-	        ->fetchAssoc();
-
+	$query = db_select('variable', 'var')->fields('var', ['name', 'value'])->condition('var.name', $name)->execute()->fetchAssoc();
 	if(empty($query)){
 	    return $default;
 	}
 	return unserialize($query['value']);
+}
+
+/*=========== Geocode Finder Functions ===========*/
+/**
+ * Function to clean and sanitize data
+ */
+function cleanString($str){
+	return iconv("UTF-8", "UTF-8//IGNORE", $str);
+}
+function sanitizeData(&$arrayIn){
+	array_walk($arrayIn, function(&$value){
+		$value = cleanString($value);
+	});
+}
+
+/**
+ * @param string $address the properly formatted address to be converted into a lat
+ * @return array | string if successful returns an associative array with fields "lat" and "lng", otherwise a string with the error
+ */
+function geocode($address){
+	$address = urlencode($address);
+	$url = "http://maps.google.com/maps/api/geocode/json?address=".$address."&sensor=false";
+	$geoInfo = getCurlRequest($url);
+	if(empty($address)){
+		return $no_addr = "NO_ADDRESS";
+	}
+	usleep(120000); //sleep for 0.12 of a sec since there you can only make 10 request per sec
+	if($geoInfo['status'] == "OK"){
+		return $geoInfo['results'][0]['geometry']['location'];
+	} else {
+		return $geoInfo['status'];
+	}
+}
+
+/**
+ * Builds an address in a for that can be geocoded based on a database record
+ * @param array $record
+ * @return array | string if successful returns an associative array with fields "lat" and "lng", otherwise a string with the error
+ */
+function geoCodeRecord($record){
+	$geo_city = empty($record['city']) ? '' : ($record['city'] . ', ');
+	$geo_state = empty($record['state']) ? '' : ($record['state'] . ', ');
+	$geo_zip = empty($record['zipcode']) ? '' : ($record['zipcode'] . ' ');
+	$geo_country = empty($record['country']) ? '' : ($record['country']);
+
+	$address = trim( $geo_city.$geo_state.$geo_zip.$geo_country, " \t\n\r\0\x0B,");
+	return geocode($address);
+}
+
+/**
+ * Callback function getGeoCodeAndStoreData() to store the data into database by runCstSync() and
+ * runOrgSync() from netForum account.
+ *
+ * @param array $record
+ */
+function getGeoCodeAndStoreData($record) {
+	sanitizeData($record);
+	$record["latitude"] = null;
+	$record["longitude"] = null;
+
+	$geoCodeLimit = false;
+	if (!$geoCodeLimit) {
+		//format the address in a way that is readable for the google maps geolocation api
+		$retry = 0;
+		do {
+			$latLng = geoCodeRecord($record);
+			if (!is_array($latLng)) {
+				//will need to do geocoding another day when the quota is refreshed
+				if ($latLng == "OVER_QUERY_LIMIT") {
+					$geoCodeLimit = true;
+				} elseif ($latLng == "UNKNOWN_ERROR") {
+					$retry++;
+				}
+			} else {
+				$record['latitude'] = $latLng['lat'];
+				$record['longitude'] = $latLng['lng'];
+			}
+		} 
+		while ($retry == 1); //allow 1 retry
+	}
+
+	if($geoCodeLimit){
+		$today = (new DateTime())->format('m/d/Y');
+		variable_set('memdir_last_sync', $today);
+	}
+	if(trim($record['country']) == "USA"){
+		$record['country'] = "United States";
+	}
+
+	$record['datechanged'] = (new DateTime())->format('Y-m-d H:i:s');
+	return $queryRes = db_merge('fs_netmemberdir_sync')->key(['external_id'=>$record['external_id']])->fields($record)->execute();
+}
+
+/*=========== Import Settings For Memberdirectory Functions ===========*/
+/**
+ * Get mapping for fields to sync the member into database.
+ * Mapping the fileds with database table fields.
+ */
+function getImportMapping(){
+	$mappingForImport = array(
+		"customer_key" => "external_id",
+		"first_name" => "name",
+		"middle_name" => "middle_name",
+		"last_name" => "last_name",
+		"email" => "email",
+		"title" => "title",
+		"name_prefix" => "name_prefix",
+		"name_suffix" => "name_suffix",
+		"address_line_1" => "address1",
+		"address_line_2" => "address2",
+		"address_line_3" => "address3",
+		"city" => "city",
+		"state" => "state",
+		"zipcode" => "zipcode",
+		"country" => "country",
+		"phone_no" => "phone_no",
+		"designation" => "designation",
+		"department" => "department",
+		"domain_name" => "domain_name",
+		"employment_organization" => "employment_org",
+		"position" => "position",
+		"do_not_publish_online" => "do_not_publish_online",
+		"customer_member_flag" => "is_member",
+		"receives_benefits_flag" => "recv_benefits",
+		"cst_type" => "cst_type",
+		"member_code" => "member_code",
+	);
+	return $mappingForImport;
+}
+
+/**
+ * Sorting field with respect to weight
+ */
+function fieldSorter($a, $b){
+	if (isset($a['weight']) && isset($b['weight'])) {
+		return $a['weight'] < $b['weight'] ? -1 : 1;
+	}
+	return 0;
+}
+
+/**
+ * Implemeted theme function to create draggable form with shwing weights
+ */
+function netmemberdirectory_theme($element, $type, $theme, $path) {
+	return array(
+		'netmemberdirectory_manage' => array(
+			'render element' => 'form',
+		)
+	);
+}
+function theme_netmemberdirectory_manage($variables){
+	$form = $variables['form'];
+	$rows = array();
+	foreach (element_children($form['slides']) as $nid) {
+		$form['slides'][$nid]['weight']['#attributes']['class'] = array('slides-order-weight');
+		$rows[] = array(
+			'data' => array(
+				array('class' => array('slide-cross')),
+				drupal_render($form['slides'][$nid]['field']),
+				drupal_render($form['slides'][$nid]['ignore_value']),
+				drupal_render($form['slides'][$nid]['weight']),
+			),
+			'class' => array('draggable'),
+		);
+	}
+	$header = array('',t('title'),t(''),t('position'));
+    $output = drupal_render($form['note']);
+	$output .= theme('table', array('header' => $header, 'rows' => $rows, 'attributes' => array('id' => 'slides-order')));
+	$output .= drupal_render_children($form);
+	drupal_add_tabledrag('slides-order', 'order', 'sibling', 'slides-order-weight');
+	return $output;
+}
+
+
+/**
+ * Validate callback function for import setting form
+ */
+function netmemberdirectory_validateFile($form, &$form_state){
+	$file = file_save_upload('import_file', array(
+		'file_validate_extensions' => array('csv'),
+	));
+
+	$form_state['storage']['file'] = $file;
+	netmemberdirectory_process_import($form, $form_state);
+	return;
+}
+
+/**
+ * Implemented impot function to map and then write the CSV file to the 
+ */
+function writeFilesToDB($inputVals, $localFilePath){
+	if(empty($inputVals)){
+		form_set_error('netmemberdirectory_overview', "An error occured during import");
+	}
+
+	$record = array();
+	ini_set("auto_detect_line_endings", "1");
+	$file = fopen($localFilePath, "r");
+	if(!$file) {
+		return "File read error. Make sure you have read access to this file " . $localFilePath;
+	}
+	
+	fgets($file); 
+	// discard first line, need to actually create the mapping from this first line since it has 
+	// the correct column headings. That way we can remove the ui and have a more seamless experience
+	$mappingForImport = getImportMapping();
+	while(($cols = fgetcsv($file)) !== false) {
+		set_time_limit(30);
+		if (!empty($cols)){ //skip blank lines if any
+			$count = 1;
+			foreach($inputVals as $currVal){
+				$record[$mappingForImport[$currVal]] = $cols[$count];
+				$count++;
+			}
+			$queryRes = getGeoCodeAndStoreData($record);
+			if($queryRes === false){
+				drupal_set_message("An error occured attempting to write the customer with cst_id: ".$record['external_id']." to the database", "error");
+			}
+		}
+	}
+	return true;
+}
+
+/**
+ * Submit function to process import form
+ */
+function netmemberdirectory_process_import($form, $form_state) {
+	$file =  $form_state['storage']['file'];
+	if(empty($file)){
+		drupal_set_message("Please select a file to upload","error");
+		return;
+	}
+
+	$local_path = drupal_realpath($file->uri);
+	if(!usort($form_state['values']['slides'], 'fieldSorter')) {
+		form_set_error('netmemberdirectory_overview', 'An error occurred processing input');
+	}
+	
+	$input_vals = [];
+	foreach($form_state['values']['slides'] as $nid => $slide) {
+		if($slide['ignore_value'] == 0) {
+			$input_vals[] = $slide['field_name'];
+		}
+	}
+
+	$chkVal = writeFilesToDB($input_vals, $local_path);
+	if($chkVal === true){
+		drupal_set_message("Items were successfully imported");
+	} else {
+		form_set_error('netmemberdirectory_overview',$chkVal);
+	}
 }

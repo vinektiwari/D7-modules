@@ -17,31 +17,23 @@
  *
  */
 function netmemberdirectory_schema() {
-	$schema['fs_netmemberdir_settings'] = array(
-	    'description' => 'To set the product-sync settings.',
+	$schema['fs_netmemberdir_fields'] = array(
+	    'description' => 'To set the member directory fields while importing.',
 	    'fields' => array(
 			'id' => array(
 				'type' => 'serial',
 				'length' => 11,
 				'not null' => TRUE,
 			),
-			'sync_frequency' => array(
+			'fields' => array(
 				'type' => 'varchar',
-				'length' => 500,
+				'length' => 100,
 				'not null' => FALSE,
 			),
-			'google_map_code' => array(
+			'position' => array(
 				'type' => 'varchar',
-				'length' => 500,
+				'length' => 50,
 				'not null' => FALSE,
-			),
-			'created' => array(
-				'type' => 'datetime',
-				'mysql_type' => 'datetime',
-			),
-			'updated' => array(
-				'type' => 'datetime',
-				'mysql_type' => 'datetime',
 			),
 		),
 		'primary key' => array('id'),
@@ -66,17 +58,17 @@ function netmemberdirectory_schema() {
 					'length' => 100,
 					'not null' => FALSE,
 				),
-				'email' => array( 
-					'type' => 'varchar',
-					'length' => 100,
-					'not null' => FALSE,
-				),
 				'middle_name' => array(
 					'type' => 'varchar',
 					'length' => 100,
 					'not null' => FALSE,
 				),
 				'last_name' => array(
+					'type' => 'varchar',
+					'length' => 100,
+					'not null' => FALSE,
+				),
+				'email' => array( 
 					'type' => 'varchar',
 					'length' => 100,
 					'not null' => FALSE,
@@ -215,17 +207,43 @@ function netmemberdirectory_schema() {
  */
 function netmemberdirectory_install() {
 	$created = date("Y-m-d H:i");
-	db_insert('fs_netmemberdir_settings')
-	->fields(array(
-		'sync_frequency' => 'Never',
-		'google_map_code' => '',
-		'created' => $created,
-	))
-	->execute();
-	
-	variable_set('memdir_sync_freq', "Never");
-	variable_set('memdir_maps_api_key', "");
-	variable_set('memdir_created', $created);
+	$field_data = array(
+		'external_id'=>'1',
+		'name'=>'2',
+		'middle_name'=>'3',
+		'last_name'=>'4',
+		'email'=>'5',
+		'title'=>'6',
+		'name_prefix'=>'7',
+		'name_suffix'=>'8',
+		'address1'=>'9',
+		'address2'=>'10',
+		'address3'=>'11',
+		'city'=>'12',
+		'state'=>'13',
+		'zipcode'=>'14',
+		'country'=>'15',
+		'phone_no'=>'16',
+		'designation'=>'17',
+		'department'=>'18',
+		'domain_name'=>'19',
+		'employment_org'=>'20',
+		'position'=>'21',
+		'do_not_publish_online'=>'22',
+		'is_member'=>'23',
+		'recv_benefits'=>'24',
+		'cst_type'=>'25',
+		'member_code'=>'26',
+	);
+	foreach ($field_data as $key => $value) {
+		db_insert('fs_netmemberdir_fields')
+		->fields(array(
+			'fields' => $key,
+			'position' => $value,
+		))
+		->execute();
+	}
+
 	variable_set('memdir_run_sync', 0);
 	variable_set('memdir_last_sync', "Never");
 	// drupal_set_message(t('Selected netForum module has been successfully installed.'));
@@ -236,10 +254,10 @@ function netmemberdirectory_install() {
  * Uninstal the Drupal module and clear out all variables/fields from database tabel;
  */
 function netmemberdirectory_uninstall() {
-	variable_del('memdir_sync_freq');
-	variable_del('memdir_maps_api_key');
-	variable_del('memdir_created');
+	variable_del('sync_frequency');
+	variable_del('google_map_code');
 	variable_del('memdir_run_sync');
 	variable_del('memdir_last_sync');
+	variable_del('memdir_stop_sync');
 	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
 }
