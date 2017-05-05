@@ -373,28 +373,28 @@ function splitDate($startDate, $endDate){
  * false - if it was stopped and running sync - if the sync is still running
  */
 function runSync($startDate, $endDate){
-    $today = new DateTime()->format("m/d/Y h:i:sa");
+    $today = (new DateTime())->format("m/d/Y h:i:sa");
     $syncComplete = true;
     if(variable_get('memdir_run_sync') == 1){
         return variable_get('memdir_run_sync');
     }
     
     variable_set('memdir_run_sync', 1);
-    try {
-        variable_set('memdir_stop_sync', 1);
-        sleep(2);
-        variable_set('memdir_run_sync', 0);	
+	try {
+		variable_set('memdir_stop_sync', 1);
+		sleep(2);
+		variable_set('memdir_run_sync', 0);	
 		runCstSync($startDate, $endDate);
 		runOrgSync($startDate, $endDate);
 		variable_set('memdir_last_sync', $today);
 	} 
 	catch(Exception $e) {
-        drupal_set_message($e->getMessage(), 'error');
-    } 
+		drupal_set_message($e->getMessage(), 'error');
+	} 
 	finally {
 		variable_set('memdir_run_sync', '0');
 		if(shouldNotSync()){
-			variable_set('memdir_stop_sync', 0); //reset this variable as it is currently 1
+			variable_set('memdir_stop_sync', 0);
 			$syncComplete = false;
 		}
 	}
@@ -829,7 +829,6 @@ function theme_netmemberdirectory_manage($variables){
 	drupal_add_tabledrag('slides-order', 'order', 'sibling', 'slides-order-weight');
 	return $output;
 }
-
 
 /**
  * Validate callback function for import setting form
