@@ -382,7 +382,8 @@ function _net_memberdirectory_sync() {
 			->fields('n1',$data_fields)
 			->orderBy('id', 'ASC');
 	$result = $query->execute()->fetchAll();
-	
+
+	// <i class="fa fa-plus-square" aria-hidden="true"></i>&nbsp;
 	$output = '<div>
 					<table class="cell-border" id="memdir-list">
 						<thead>
@@ -397,8 +398,7 @@ function _net_memberdirectory_sync() {
 					    foreach ($result as $memRecords) {
 	$output .= '			<tr>
 					            <td>
-					            	<a href="#" class="expand" data-value="'.$memRecords->id.'">
-						            	<i class="fa fa-plus-square" aria-hidden="true"></i>&nbsp;
+					            	<a class="expand" data-value="'.$memRecords->id.'">
 						            	'.$memRecords->name." ".$memRecords->last_name.'
 					            	</a>
 					            </td>
