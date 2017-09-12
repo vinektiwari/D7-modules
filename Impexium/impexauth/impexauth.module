@@ -8,6 +8,7 @@
  *
  * Start Date : 23th March'2017;
  * Author : Vinek T.;
+ * Updated : 7th August'2017
  */
 
 /**
@@ -85,7 +86,7 @@ function impexauth_admin_settings($node, &$form_state) {
 	$form['impex_web_api']['api_app_key'] = array(
 		'#title'         => t('API App Key'),
 		'#description'   => t('Impexium Application Key'),
-		'#type'          => 'textfield',
+		'#type'          => 'password',
 		'#default_value' => variable_get('api_app_key'),
 		'#required'      => TRUE,
 	);
@@ -115,7 +116,7 @@ function impexauth_admin_settings($node, &$form_state) {
 	$form['impex_client_api']['client_api_app_pass'] = array(
 		'#title'         => t('Client API Application Password'),
 		'#description'   => t('Impexium Client API Application Password'),
-		'#type'          => 'textfield',
+		'#type'          => 'password',
 		'#default_value' => variable_get('client_api_app_pass'),
 		'#required'      => TRUE,
 	);
@@ -129,7 +130,7 @@ function impexauth_admin_settings($node, &$form_state) {
 	$form['impex_client_api']['client_api_user_pass'] = array(
 		'#title'         => t('Client API Admin User Password'),
 		'#description'   => t('Client API Application Admin User Password'),
-		'#type'          => 'textfield',
+		'#type'          => 'password',
 		'#default_value' => variable_get('client_api_user_pass'),
 		'#required'      => TRUE,
 	);
@@ -161,6 +162,13 @@ function impexauth_admin_settings($node, &$form_state) {
 		'#description'   => t('Redirect to Impexium site to log out there when user logs out of Drupal'),
 		'#type'          => 'checkbox',
 		'#default_value' => variable_get('logout_option'),
+	);
+	$form['impex_site_setting']['site_logout_url'] = array(
+		'#title'         => t('Impexium Logout Url'),
+		'#description'   => t('Impexium Logout Url'),
+		'#type'          => 'textfield',
+		'#default_value' => variable_get('site_logout_url'),
+		'#required'      => TRUE,
 	);
 	return system_settings_form($form);
 }
@@ -229,20 +237,20 @@ function impexauth_form_user_login_block_alter(&$form, $form_state) {
  * @param $form_state
  */
 function impexauth_login_validate($form, &$form_state) {
-    global $user;
+	global $user;
 
     $input = $form_state['input'];
     $name = $input["name"];
     $pass = $input["pass"];
 
-	$uid = _impexauth_get_uid_from_username($name);
+	$impexium = impexium_get_api();
+    $uid = _impexauth_get_uid_from_username($name);
 	$external_id = _impexauth_get_external_uid_from_username($name);
 	$user_by_email = user_load_by_mail($name);
 	
 	if (($external_id || !$uid) && ((!$uid && !$user_by_email) || (isset($user_by_email->uid) && $uid == $user_by_email->uid && $external_id))) {
-
 		// External authentication
-		$info = json_decode(_curlAuthenticate($name,$pass));
+		$info = json_decode(__authenticate($name,$pass));
 		if (empty($info->result->uri) || empty($info->result->ssoToken)) {
 			return false;
 		}
@@ -250,8 +258,8 @@ function impexauth_login_validate($form, &$form_state) {
 		// Attempt if there is existing user in drupal
 		$existing_uid = _impexauth_get_uid_from_userId($info->result->userId);
 		if ($existing_uid) {
-			// get customer info
-			$cust_info = _curlAuthViaSSOToken($info->result->ssoToken);
+			// get customer info from impexium
+			$cust_info = __authViaSSOToken($info->result->ssoToken);
 			
         	// save new user
         	$existing_user = user_load($existing_uid);
@@ -272,44 +280,38 @@ function impexauth_login_validate($form, &$form_state) {
             user_external_login_register($name, 'netauth');
 		} else {
 			// There is no uid with that userId but there may be already be a user with that email
-            if ($existing_uid != $uid) {
-            	$name = array_keys($form)[0];
-                $siteEmail = (variable_get('site_mail', '') == '') ? '' : "(".variable_get('site_mail', '').")";
-                form_set_error($name, t("Invalid credentials. Please contact your system administrator ".$siteEmai."."));
-                return FALSE;
-            }
+			if ($existing_uid != $uid) {
+				$name = array_keys($form)[0];
+				$siteEmail = (variable_get('site_mail', '') == '') ? '' : "(".variable_get('site_mail', '').")";
+				form_set_error($name, t("Invalid credentials. Please contact your system administrator ".$siteEmai."."));
+				return FALSE;
+			}
 
-			$cust_info = _curlAuthViaSSOToken($info->result->ssoToken);
+			// get customer info from impexium
+			$cust_info = __authViaSSOToken($info->result->ssoToken);
 			
 			// register the user.
-            user_external_login_register($name, 'impexauth');
-            
-            //insert into the fs_impexium_auth table
-            _impexauth_set_userId_from_uid($user->uid,$info->result->userId,$info->result->appToken,$info->result->userToken);
+			user_external_login_register($name, 'impexauth');
 
-            // save/update user email and load user object
-            $existingUser = user_load($user->uid);
+			//insert into the fs_impexium_auth table
+			_impexauth_set_userId_from_uid($user->uid,$info->result->userId,$info->result->appToken,$info->result->userToken);
 
-            // update some user property
-            $existingUser->mail = $input ['name'];
-            $existingUser->pass = $input ['pass'];
+			// save/update user email and load user object
+			$existingUser = user_load($user->uid);
 
-            // save existing user
-            user_save((object) ['uid' => $existingUser->uid], (array) $existingUser);
+			// update some user property
+			$existingUser->mail = $input ['name'];
+			$existingUser->pass = $input ['pass'];
+
+			// save existing user
+			user_save((object) ['uid' => $existingUser->uid], (array) $existingUser);
 		}
 		$form_state['uid'] = $user->uid;
-        // We took the form by reference and edited it here.
-        // User user_external_login_register will call the submit method (user_login_submit) for us,
-        // so clear it out to prevent it from continuing.
-        $form ['#submit'] = [];
+		$form ['#submit'] = [];
 
-        // set sso token in session.
-        $_SESSION ['impex_sso'] = $info->result->ssoToken;
-
-        // add a hook for ImpexiumGroups module.
-        module_invoke('impexgroups', 'groups_validate');
+		$_SESSION ['impex_sso'] = $info->result->ssoToken;
+		module_invoke('impexgroups', 'groups_validate');
 	} else {
-        // use standard Drupal authentication function
         user_login_authenticate_validate($form, $form_state);
     }
 }
@@ -357,8 +359,8 @@ function impexauth_reset_user_pass(&$form, &$form_state) {
     	
     	// There is an associated Impexium account
     	if (!empty($cust_uid)) {
-    		$cust_info = (array)_curlIndivisualCustInfo($account->uid,$email);
-            if (!is_array($cust_info)) {
+    		$cust_info = (array)__indivisualCustInfo($account->uid,$email);
+    		if (!is_array($cust_info)) {
                 form_set_error($name, t("An error occurred contacting Impexium, please try again"));
                 return FALSE;
             }
@@ -421,13 +423,13 @@ function impexauth_update_password(&$form, &$form_state) {
         if ($existingUser == FALSE) {
             throw new RuntimeException("Cannot load user information");
         }
-        _curlUpdatePasswordRequest($user->uid, $new_pass);
+        __updateProfilePassword($user->uid, $new_pass);
     }
     catch (Exception $e) {
         form_set_error('web_api_url', t('Uh Oh!, ' . $e->getMessage()));
         return FALSE;
     }
-    user_profile_form_submit($form, $form_state);
+    // user_profile_form_submit($form, $form_state);
 }
 
 /**
@@ -440,38 +442,166 @@ function impexauth_user_delete($account) {
 }
 
 /**
+ * Implements hook_user_logout
+ */
+function impexauth_user_logout($account){
+	if (!empty(variable_get('logout_option')) && !empty(variable_get('site_logout_url'))) {
+		drupal_set_message(t('Thanks for visiting, come again!'));
+		session_destroy();
+		drupal_goto();
+	} else {
+		module_load_include('pages.inc', 'user');
+		user_logout();
+	}
+}
+
+/*======================== SUPPORT FUNCTION CALL GOES HERE ========================*/
+/**
+ * @param $username
+ * @return
+ */
+function _impexauth_get_uid_from_username($username) {
+	return db_query('SELECT uid from {users} WHERE name = :name', [':name' => $username])->fetchField();
+}
+
+/**
+ * @param $username
+ * @return mixed
+ */
+function _impexauth_get_external_uid_from_username($username) {
+	return db_query('SELECT uid FROM {authmap} WHERE authname = :authname AND module = :module',[':authname'=>$username,':module'=>'impexauth',])->fetchField();
+}
+
+/**
+ * @param $cst_key
+ */
+function _impexauth_get_uid_from_userId($userId) {
+	return db_query('SELECT uid FROM {fs_impexium_auth} WHERE userId = :userId', [':userId' => $userId])->fetchField();
+}
+function _impexauth_set_userId_from_uid($uid,$userId,$appToken,$userToken) {
+	return db_insert('fs_impexium_auth')->fields(['uid'=>$uid,'userId'=>$userId,'appToken'=>$appToken,'userToken'=>$userToken])->execute();
+}
+function _impexauth_edit_user_from_uid($uid,$appToken,$userToken) {
+	return db_update('fs_impexium_auth')->fields(['appToken'=>$appToken,'userToken'=>$userToken])->condition('uid', $uid)->execute();
+}
+function _impexauth_get_userId_from_uid($uid) {
+	return db_query('SELECT userId FROM {fs_impexium_auth} WHERE uid = :uid', [':uid' => $uid,])->fetchField();
+}
+function _impexauth_update_authmap($name, $uid) {
+	return db_update('authmap')->fields(['authname' => $name])->condition('uid', $uid)->execute();
+}
+function _impexauth_get_token_from_uid($uid) {
+	return db_query('SELECT userToken,appToken FROM {fs_impexium_auth} WHERE uid = :uid', [':uid' => $uid,])->fetchAssoc();
+}
+
+/**
+ * Updates the table specified by $tbl_name
+ *
+ * @param unknown $tbl_name - table name
+ * @param unknown $field_array - array with the field name and values to update
+ * @param unknown $condition - a size one array where the key is the field name
+ *   and the value is the condition value
+ */
+function _impexauth_db_update($tbl_name, $field_array, $condition) {
+	reset($condition);
+	$key = key($condition);
+	db_update($tbl_name)->fields($field_array)
+		->condition($key, $condition[$key])
+		->execute();
+}
+
+/**
+ * @param $name
+ * @return mixed
+ */
+function _impexauth_get_role_by_name($name) {
+	return array_search($name, user_roles());
+}  
+
+/*======================== API CALL GOES HERE ========================*/
+/**
+ * Wrapper around the API constructor passing consume key and secret.
+ *
+ * @return Salesforce
+ *   Returns a Salesforce class object.
+ */
+function impexium_get_api() {
+	return new Impexium(
+		variable_get('api_app_name'),
+		variable_get('api_app_key')
+	);
+}
+
+/**
+ * Function to setup the curl and response it on requested method.
+ *
+ * @param string $url
+ * @param string $data
+ * @param string $headers
+ * @param string $method
+ */
+function httpRequest($url, $data, $headers = array(), $method = 'GET') {
+    if ($method === 'GET') {
+        $data = NULL;
+    }
+
+    $options = array(
+        'method' => $method,
+        'headers' => $headers,
+        'data' => $data,
+    );
+    return drupal_http_request($url, $options);
+}
+
+/**
  * CURL handler/function for authenticate through REST API
  * CURL handler/function for getting ssoToken
  * CURL handler/function for authentication
+ *
+ * @param string $aap_name
+ * @param string $app_key
  */
-function _curlAuthenticate($user,$pass) {
-	$url = variable_get('web_api_url');
+function __authRequest() {
+    $url = variable_get('web_api_url');
 	$appname = variable_get('api_app_name');
 	$appkey = variable_get('api_app_key');
-	$data = array('AppName' => $appname, 'AppKey' => $appkey);
-	$ch = curl_init(); // Initiate cURL
-    curl_setopt($ch, CURLOPT_URL,$url);
-    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
-    $output = curl_exec ($ch); // Execute
-    curl_close ($ch); // Close cURL handle
 
-    $auth = json_decode($output);
-    if ($auth->accessToken) {
+    $headers = array(
+        'Content-Type' => 'application/x-www-form-urlencoded',
+    );
+    $data = drupal_http_build_query(array(
+        'AppName' => $appname, 
+        'AppKey' => $appkey
+    ));
+    
+    $response = httpRequest($url, $data, $headers, 'POST');
+    $auth = drupal_json_decode($response->data);
+    return $auth;
+}
+
+/**
+ * Function which request the token to salesforce.
+ *
+ * @param string $name
+ * @param string $pass
+ */
+function __authenticate($name,$pass) {
+    $auth = __authRequest();
+    if ($auth['accessToken']) {
 		$headers = array(
-			'AccessToken:'.trim($auth->accessToken),
+			'AccessToken:'.trim($auth['accessToken']),
+			'AppToken:'.trim($auth['appToken']),
 			'Content-Type: application/json',
 		);
 		$data = array(
 			'AppId' => trim(variable_get('client_api_app_id')), 
 			'AppPassword' => trim(variable_get('client_api_app_pass')), 
-			'AppUserEmail' => trim($user), 
+			'AppUserEmail' => trim($name), 
 			'AppUserPassword' => trim($pass)
 		);
 	    
 		$ch = curl_init(); // Initiate cURL
-	    curl_setopt($ch, CURLOPT_URL, $auth->uri);
+	    curl_setopt($ch, CURLOPT_URL, $auth['uri']);
 	    $options = array(
 	        CURLOPT_SSL_VERIFYHOST => 0,
 	        CURLOPT_SSL_VERIFYPEER => 0,
@@ -498,14 +628,14 @@ function _curlAuthenticate($user,$pass) {
 				));
 			} else {
 				$errorMsg = json_encode(array(
-				"status"=> "failed",
-				"result"=> 'The credentials you entered does not match our records.',
+					"status"=> "failed",
+					"result"=> 'The credentials you entered does not match our records.',
 				));
 			}
 		} else {
 			$errorMsg = json_encode(array(
-			"status"=> "failed",
-			"result"=> 'The credentials you entered does not match our records.',
+				"status"=> "failed",
+				"result"=> 'The credentials you entered does not match our records.',
 			));
 		}
 		return $errorMsg;
@@ -516,22 +646,13 @@ function _curlAuthenticate($user,$pass) {
 
 /**
  * CURL handler/function for generating ssoToken seperately for auth conditions
+ *
+ * @param string $ssoToken
  */
-function _curlAuthViaSSOToken($ssoToken) {
-	$url = variable_get('web_api_url');
-	$appname = variable_get('api_app_name');
-	$appkey = variable_get('api_app_key');
-	$data = array('AppName' => $appname, 'AppKey' => $appkey);
-	$ch = curl_init(); // Initiate cURL
-    curl_setopt($ch, CURLOPT_URL,$url);
-    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
-    $output = curl_exec ($ch); // Execute
-    curl_close ($ch); // Close cURL handle
-    $auth = json_decode($output, TRUE);
+function __authViaSSOToken($ssoToken) {
+    $auth = __authRequest();
     
-	// matches the current api
+    // matches the current api
 	$matches = [];
 	preg_match('/((http:\/\/|https:\/\/)([a-z.0-9-]+))\//', $auth['uri'], $matches);
 	if(count($matches) < 3){
@@ -540,11 +661,12 @@ function _curlAuthViaSSOToken($ssoToken) {
 	
 	$clientUrl = $matches[0];
 	$responseToken = $auth['accessToken'];
+	$appToken = $auth['appToken'];
 	if($responseToken){
 		$headers = array(
 			'AccessToken:'.trim($responseToken),
-			'UserToken:'.trim($ssoToken),
-			//'Content-Type: application/json',
+			'AppToken:'.trim($appToken),
+			'UserToken:'.trim($ssoToken)
 		);
 		
 		$clientUrl = trim($clientUrl).'api/v1/Individuals/FindBySsoToken/'.trim($ssoToken);
@@ -605,35 +727,84 @@ function _curlAuthViaSSOToken($ssoToken) {
 }
 
 /**
- * CURL handler/function for getting indivisula customer details.
+ * CURL handler/function for getting password filed to be updated through drupal site.
  */
-function _curlIndivisualCustInfo($uid,$mail) {
-	$url = variable_get('web_api_url');
-	$appname = variable_get('api_app_name');
-	$appkey = variable_get('api_app_key');
-	$data = array('AppName' => $appname, 'AppKey' => $appkey);
-	$ch = curl_init(); // Initiate cURL
-    curl_setopt($ch, CURLOPT_URL,$url);
-    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
-    $output = curl_exec ($ch); // Execute
-    curl_close ($ch); // Close cURL handle
-    $auth = json_decode($output, TRUE);
-
-	// matches the current api
+function __updateProfilePassword($uid,$pass) {
+	$auth = __authRequest();
+    
+    // matches the current api
 	$matches = [];
 	preg_match('/((http:\/\/|https:\/\/)([a-z.0-9-]+))\//', $auth['uri'], $matches);
 	if(count($matches) < 3){
 		throw new Exception("An error occured with parsing the client url");
 	}
+	
 	$clientUrl = $matches[0];
 	$responseToken = $auth['accessToken'];
+	$appToken = $auth['appToken'];
+	
+	if($responseToken){
+		$userId = _impexauth_get_userId_from_uid($uid);
+		$tokens = _impexauth_get_token_from_uid($uid);
+		$headers = array(
+			'Content-Type: application/json',
+			'Accept: application/json',
+			'UserToken:'.trim($tokens['userToken']),
+			'AppToken:'.trim($tokens['appToken'])
+		);
+		$data = array(
+			"password" => trim($pass), 
+			"mustChangePasswordOnLogin" => true
+		);
+		$clientUrl = trim($clientUrl).'api/v1/Users/'.$userId.'/Password';
+		$ch = curl_init();
+		curl_setopt($ch, CURLOPT_URL, $clientUrl);
+		$options = array(
+			CURLOPT_SSL_VERIFYHOST => 0,
+			CURLOPT_SSL_VERIFYPEER => 0,
+			CURLOPT_FOLLOWLOCATION => 1,
+			CURLOPT_RETURNTRANSFER => TRUE,
+			CURLOPT_HEADER => false,
+			CURLOPT_USERAGENT => $_SERVER['HTTP_USER_AGENT'],
+			CURLOPT_HTTPHEADER => $headers,
+		);
+		curl_setopt_array($ch, $options);
+		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
+		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
+		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+		$response = curl_exec($ch);
+		$curl_info = curl_getinfo($ch);
+		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+		return $response;
+		curl_close($ch);
+	} else {
+		throw new Exception("Impexium credentials not set", 1);
+	}
+}
+
+/**
+ * CURL handler/function for getting indivisula customer details.
+ */
+function __indivisualCustInfo($uid,$mail) {
+	$auth = __authRequest();
+    
+    // matches the current api
+	$matches = [];
+	preg_match('/((http:\/\/|https:\/\/)([a-z.0-9-]+))\//', $auth['uri'], $matches);
+	if(count($matches) < 3){
+		throw new Exception("An error occured with parsing the client url");
+	}
+	
+	$clientUrl = $matches[0];
+	$responseToken = $auth['accessToken'];
+	$appToken = $auth['appToken'];
+
 	if($responseToken){
 		$tokens = _impexauth_get_token_from_uid($uid);
 		$headers = array(
 			'UserToken:'.trim($tokens['userToken']),
 			'AppToken:'.trim($tokens['appToken']),
+			'Content-Type: application/json'
 		);
 	    $clientUrl = trim($clientUrl).'api/v1/Individuals/FindByEmail/'.trim($mail);
 
@@ -692,138 +863,3 @@ function _curlIndivisualCustInfo($uid,$mail) {
 	}
 }
 
-/**
- * CURL handler/function for getting password filed to be updated through drupal site.
- */
-function _curlUpdatePasswordRequest($uid,$pass) {
-	$url = variable_get('web_api_url');
-	$appname = variable_get('api_app_name');
-	$appkey = variable_get('api_app_key');
-	$data = array('AppName' => $appname, 'AppKey' => $appkey);
-	$ch = curl_init(); // Initiate cURL
-    curl_setopt($ch, CURLOPT_URL,$url);
-    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
-    $output = curl_exec ($ch); // Execute
-    curl_close ($ch); // Close cURL handle
-    $auth = json_decode($output, TRUE);
-    
-    // matches the current api
-	$matches = [];
-	preg_match('/((http:\/\/|https:\/\/)([a-z.0-9-]+))\//', $auth['uri'], $matches);
-	if(count($matches) < 3){
-		throw new Exception("An error occured with parsing the client url");
-	}
-	
-	$clientUrl = $matches[0];
-	$responseToken = $auth['accessToken'];
-	if($responseToken){
-		$userId = _impexauth_get_userId_from_uid($uid);
-
-		$tokens = _impexauth_get_token_from_uid($uid);
-		
-		$headers = array(
-			'Content-Type: application/json',
-			'Accept: application/json',
-			'UserToken:'.trim($tokens['userToken']),
-			'AppToken:'.trim($tokens['appToken'])
-		);
-		$data = array(
-			"password" => trim($pass), 
-			"mustChangePasswordOnLogin" => true
-		);
-		
-		$clientUrl = trim($clientUrl).'api/v1/Users/'.$userId.'/Password';
-		$ch = curl_init();
-		curl_setopt($ch, CURLOPT_URL, $clientUrl);
-		$options = array(
-			CURLOPT_SSL_VERIFYHOST => 0,
-			CURLOPT_SSL_VERIFYPEER => 0,
-			CURLOPT_FOLLOWLOCATION => 1,
-			CURLOPT_RETURNTRANSFER => TRUE,
-			CURLOPT_HEADER => false,
-			CURLOPT_USERAGENT => $_SERVER['HTTP_USER_AGENT'],
-			CURLOPT_HTTPHEADER => $headers,
-		);
-		curl_setopt_array($ch, $options);
-		curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-		curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-		curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-		$response = curl_exec($ch);
-		$curl_info = curl_getinfo($ch);
-		$http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-		return $response;
-		curl_close($ch);
-	} else {
-		throw new Exception("Impexium credentials not set", 1);
-	}
-}
-
-/**
- * @file
- * Helper functions to return a users uid based on their username.
- *
- * @param $username
- * @return
- */
-function _impexauth_get_uid_from_username($username) {
-	return db_query('SELECT uid from {users} WHERE name = :name', [':name' => $username])->fetchField();
-}
-
-/**
- * @param $username
- * @return mixed
- */
-function _impexauth_get_external_uid_from_username($username) {
-	return db_query('SELECT uid FROM {authmap} WHERE authname = :authname AND module = :module',[':authname'=>$username,':module'=>'impexauth',])->fetchField();
-}
-
-/**
- * Gets the drupal uid whose impexium customer is within the database
- * or returns false if that key is not stored in the database
- *
- * @param $cst_key
- */
-function _impexauth_get_uid_from_userId($userId) {
-	return db_query('SELECT uid FROM {fs_impexium_auth} WHERE userId = :userId', [':userId' => $userId])->fetchField();
-}
-function _impexauth_set_userId_from_uid($uid,$userId,$appToken,$userToken) {
-	return db_insert('fs_impexium_auth')->fields(['uid'=>$uid,'userId'=>$userId,'appToken'=>$appToken,'userToken'=>$userToken])->execute();
-}
-function _impexauth_edit_user_from_uid($uid,$appToken,$userToken) {
-	return db_update('fs_impexium_auth')->fields(['appToken'=>$appToken,'userToken'=>$userToken])->condition('uid', $uid)->execute();
-}
-function _impexauth_get_userId_from_uid($uid) {
-	return db_query('SELECT userId FROM {fs_impexium_auth} WHERE uid = :uid', [':uid' => $uid,])->fetchField();
-}
-function _impexauth_update_authmap($name, $uid) {
-	return db_update('authmap')->fields(['authname' => $name])->condition('uid', $uid)->execute();
-}
-function _impexauth_get_token_from_uid($uid) {
-	return db_query('SELECT userToken,appToken FROM {fs_impexium_auth} WHERE uid = :uid', [':uid' => $uid,])->fetchAssoc();
-}
-
-/**
- * Updates the table specified by $tbl_name
- *
- * @param unknown $tbl_name - table name
- * @param unknown $field_array - array with the field name and values to update
- * @param unknown $condition - a size one array where the key is the field name
- *   and the value is the condition value
- */
-function _impexauth_db_update($tbl_name, $field_array, $condition) {
-	reset($condition);
-	$key = key($condition);
-	db_update($tbl_name)->fields($field_array)
-		->condition($key, $condition[$key])
-		->execute();
-}
-
-/**
- * @param $name
- * @return mixed
- */
-function _impexauth_get_role_by_name($name) {
-	return array_search($name, user_roles());
-}  

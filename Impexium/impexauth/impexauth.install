@@ -68,11 +68,15 @@ function impexauth_install() {
  *
  */
 function impexauth_uninstall() {
-	variable_del('id');
-	variable_del('uid');
-	variable_del('userId');
-	variable_del('member_type');
-	variable_del('appToken');
-	variable_del('userToken');
+	variable_del('api_app_name');
+	variable_del('api_app_key');
+	variable_del('client_api_url');
+	variable_del('client_api_app_id');
+	variable_del('client_api_app_pass');
+	variable_del('client_api_user_email');
+	variable_del('client_api_user_pass');
+	variable_del('site_url');
+	variable_del('logout_option');
+	variable_del('site_logout_url');
 	// drupal_set_message(t('Selected Impexium module has been successfully uninstalled.'));
 }

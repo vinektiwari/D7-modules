@@ -102,7 +102,7 @@ function impexgroups_groups_validate() {
     $del_rol = _impexgroups_remove_role_from_user($user->uid, $user->roles);
 
     // Get user info by curl methods
-    $cust_info = _curlCustInfoViaSSOToken($ssoToken);
+    $cust_info = __custInfoViaSSOToken($ssoToken);
     $cust_mail = $cust_info->dataList[0];
     
     // Check for the non-member flags as default
@@ -226,19 +226,13 @@ function _impexgroups_add_role($machine_name, $weight = 0, $copyRole = null) {
 }
 
 /* =================== cUrl Operation Handlers =================== */
-function _curlCustInfoViaSSOToken($ssoToken) {
-    $url = variable_get('web_api_url');
-    $appname = variable_get('api_app_name');
-    $appkey = variable_get('api_app_key');
-    $data = array('AppName' => $appname, 'AppKey' => $appkey);
-    $ch = curl_init(); // Initiate cURL
-    curl_setopt($ch, CURLOPT_URL,$url);
-    curl_setopt($ch, CURLOPT_POST, true);  // Tell cURL you want to post something
-    curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($data)); // Define what you want to post
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // Return the output in string format
-    $output = curl_exec ($ch); // Execute
-    curl_close ($ch); // Close cURL handle
-    $auth = json_decode($output, TRUE);
+/**
+ * CURL handler/function to get custInfo via SSO token
+ *
+ * @param string $ssoToken
+ */
+function __custInfoViaSSOToken($ssoToken) {
+    $auth = __authRequest();
     
     // matches the current api
     $matches = [];
@@ -249,11 +243,12 @@ function _curlCustInfoViaSSOToken($ssoToken) {
     
     $clientUrl = $matches[0];
     $responseToken = $auth['accessToken'];
+    $appToken = $auth['appToken'];
     if($responseToken){
         $headers = array(
             'AccessToken:'.trim($responseToken),
-            'UserToken:'.trim($ssoToken),
-            //'Content-Type: application/json',
+            'AppToken:'.trim($appToken),
+            'UserToken:'.trim($ssoToken)
         );
         
         $clientUrl = trim($clientUrl).'api/v1/Individuals/FindBySsoToken/'.trim($ssoToken);

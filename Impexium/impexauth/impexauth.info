@@ -5,4 +5,5 @@ package = FusionSpan
 core = 7.x
 version = 7.x-1.0
 files[] = impexauth.install
+files[] = impexium.inc
 configure = admin/config/impexium/auth/settings
