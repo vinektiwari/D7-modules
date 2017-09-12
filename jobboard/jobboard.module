@@ -1,0 +1,317 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Ths advance job board module to have multiple jobs with their applied applications.
+ * This molldule allow to create a content-type named "jobboard". With this content-type you can add
+ * multiple field which is necessory to add new job to the board which will going to be applied
+ * by the logged in user through the job board section
+ *
+ * Author : Vinek T.;
+ * Start Date : 7th July'2017;
+ */
+ 
+
+/**
+ * Implements hook_init().
+ */
+function jobboard_init() {
+	
+}
+
+/**
+ * Implements hook_menu().
+ * Menu will display in Configuration option under the Salesforce tab 
+ */
+function jobboard_menu() {
+	$items = array();
+	$items['admin/config/jobboard'] = array(
+		'title' => 'Job Board',
+		'description' => 'All job board related stuff goes here.',
+		'page callback' => 'system_admin_menu_block_page',
+		'access arguments' => array('administer site configuration'),
+		'file' => 'system.admin.inc',
+		'file path' => drupal_get_path('module', 'system'),
+	);
+	$items['admin/config/jobboard/applications'] = array(
+		'title' => 'Job Applications',
+		'description' => 'All usserd job application comes here.',
+		'page callback' => 'drupal_get_form',
+		'page arguments' => array('jobboard_applications'),
+		'access arguments' => array('administer site configuration'),
+	);
+	// $items['jobboard/alljobs'] = array(
+	// 	'type' => MENU_CALLBACK,
+	// 	'title' => 'Job Board',
+	// 	'description' => 'My custom and very special page',
+	// 	'page callback' => 'jobboard_all_jobs',
+	// 	'access arguments' => array('access content'),
+	// );
+	// $items['jobboard/joblist'] = array(
+	// 	'type' => MENU_NORMAL_ITEM,
+	// 	'title' => t('Job Board'),
+	// 	'description' => 'My custom and very special page',
+	// 	'page callback' => 'jobboard_joblist',
+	// 	'access callback' => 'user_access',
+	// 	'access arguments' => array('access content'),
+	// );
+	return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function jobboard_permission() {
+	$permissions = array(
+		'administer jobboard' => array(
+			'title' => t('Administer job applications'),
+			'description' => t('Allows users to configure application fields.'),
+			'restrict access' => TRUE,
+		),
+		'view jobboard entities' => array(
+			'title' => t('View job applications'),
+			'description' => t('Allows users to view applications.'),
+		),
+		'edit any jobboard entities' => array(
+			'title' => t('Edit any job applications'),
+			'description' => t('Allows users to edit any applications.'),
+		),
+		'edit own jobboard entities' => array(
+			'title' => t('Edit own job applications'),
+			'description' => t('Allows users to edit own applications.'),
+		),
+		'edit job reference on jobboard entities' => array(
+			'title' => t('Edit job reference on application'),
+			'description' => t('Allows users to edit the job reference field on applications.'),
+		),
+	);
+	return $permissions;	
+}
+
+/**
+ * Implements callback function to view all job applications from users.
+ */
+function jobboard_applications(){
+
+}
+
+/**
+ * Implements hook_theme_registry_alter().
+ */
+function jobboard_theme_registry_alter(&$theme_registry) {
+	// Defined path to the current module.
+	$module_path = drupal_get_path('module', 'jobboard');
+	// Find all .tpl.php files in this module's folder recursively.
+	$template_file_objects = drupal_find_theme_templates($theme_registry, '.tpl.php', $module_path);
+	// Iterate through all found template file objects.
+	foreach ($template_file_objects as $key => $template_file_object) {
+		// If the template has not already been overridden by a theme.
+		if (!isset($theme_registry[$key]['theme path']) || !preg_match('#/themes/#', $theme_registry[$key]['theme path'])) {
+			// Alter the theme path and template elements.
+			$theme_registry[$key]['theme path'] = $module_path;
+			$theme_registry[$key] = array_merge($theme_registry[$key], $template_file_object);
+			$theme_registry[$key]['type'] = 'module';
+		}
+	}
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function jobboard_block_info() {
+	$blocks = array();
+	$blocks['jobboard_alljobs'] = array(
+		'info' => t('Job Board'),
+		'title' => t('Job Board'),
+		'status' => TRUE,
+	);
+	return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function jobboard_block_view($delta = '') {
+	$block = array();
+
+	switch ($delta) {
+		case 'jobboard_alljobs':
+			$block['subject'] = '';
+			$block['content'] = jobboard_alljobs_block_content();
+			break;
+	}
+	return $block;
+}
+
+/**
+ * Implements hook_block_view for product list/store page().
+ */
+function jobboard_alljobs_block_content() {
+	global $base_url;
+
+	drupal_add_css(drupal_get_path('module', 'jobboard') . '/css/global.css');
+	drupal_add_css(drupal_get_path('module', 'jobboard') . '/css/jquery.dataTables.min.css');
+	drupal_add_js(drupal_get_path('module', 'jobboard') . '/js/jquery-1.12.3.min.js');
+	drupal_add_js(drupal_get_path('module', 'jobboard') . '/js/custom.js');
+	drupal_add_js(drupal_get_path('module', 'jobboard') . '/js/jquery.dataTables.min.js');
+	drupal_add_js(
+		'jQuery.noConflict();
+		jQuery(window).ready(function() {
+			jQuery("#joblist").DataTable( {
+				"pagingType": "simple_numbers",
+				"lengthMenu" : [10, 50, 100, 500],
+				"pageLength" : 10,
+			});
+		});',
+		array(
+			'type' => 'inline',
+			'scope' => 'footer',
+			'group' => JS_THEME,
+			'weight' => 5,
+		)
+	);
+
+	$dbquery = db_query("SELECT node.title AS node_title, node.nid AS nid, node.created AS node_created,
+							   field_data_field_job_category.entity_type AS entity, field_data_field_job_category.bundle AS bundle,
+							   field_data_field_job_location.field_job_location_value AS location,
+							   field_data_field_job_type.field_job_type_value AS type,
+							   taxonomy_term_data.tid AS taxoId,taxonomy_term_data.vid AS vocabId
+						FROM {node} node
+						LEFT JOIN {field_data_field_job_category} field_data_field_job_category
+							ON node.nid = field_data_field_job_category.entity_id
+						LEFT JOIN {field_data_field_job_location} field_data_field_job_location
+							ON node.nid = field_data_field_job_location.entity_id
+						LEFT JOIN {field_data_field_job_type} field_data_field_job_type
+							ON node.nid = field_data_field_job_type.entity_id
+						LEFT JOIN {taxonomy_term_data} taxonomy_term_data
+							ON field_data_field_job_category.field_job_category_tid = taxonomy_term_data.tid
+						WHERE ((node.status = '1') AND (node.type IN ('jobboard')))
+						ORDER BY node_created DESC");
+	$dbresult = $dbquery->fetchAll();
+
+	$output = "";
+	// $output .= drupal_render(drupal_get_form('jobboard_custom_search_form'));
+	
+
+	$output .= '<div id="jobboard-search-result-id-wrapper"></div>';
+	
+	/* Search form start */
+	$output .= '<div class="searchForm">';
+		$output .= '<form name="frmSearch" id="frmSearch" method="post">';
+			$output .= '<div class="title-field">';
+				$output .= '<label>Job Title</label><br>';
+				$output .= '<input id="keySearch" class="form-text" type="text" value="" name="keySearch">';
+			$output .= '</div>';
+			$output .= '<div class="type-field">';
+				$output .= '<label>Job Type</label><br>';
+				$output .= '<select name="typeSearch" id="typeSearch">';
+					$output .= '<option value="0">Please Select</option>';
+					$output .= '<option value="FT">Full Time</option>';
+					$output .= '<option value="PT">Part Time</option>';
+				$output .= '</select>';
+			$output .= '</div>';
+			$output .= '<div class="search-btn">';
+				$output .= '<button type="button" name="btnSearch" id="btnSearch" class="btn btn-primary">SEARCH</button>';
+			$output .= '</div>';
+		$output .= '</form>';
+	$output .= '</div>';
+	/* Search form ends */
+
+	/* Job listing start */
+	$output .= '<table id="joblist">';
+		$output .= '<thead>';
+			$output .= '<tr>';
+				$output .= '<th>Job Title</th>';
+				$output .= '<th>Job Location</th>';
+				$output .= '<th>Job Type</th>';
+			$output .= '</tr>';	
+		$output .= '</thead>';
+		$output .= '<tbody>';
+			foreach ($dbresult as $record) {
+			$output .= '<tr>';
+				$output .= '<td><a href="'.$base_url.'/node/'.$record->nid.'">'.$record->node_title.'</a></td>';
+				$output .= '<td>'.$record->location.'</td>';
+				$output .= '<td>'.$record->type.'</td>';
+			$output .= '</tr>';
+			}
+		$output .= '</tbody>';
+	$output .= '</table>';
+	/* Job listing ends */
+	
+	return $output;
+
+	// $query = db_select('node','n1');
+	// $query->join('field_data_field_job_category', 'n2', 'n1.nid = n2.entity_id');
+	// $query->join('field_data_field_job_location', 'n3', 'n1.nid = n3.entity_id');
+	// $query->join('field_data_field_job_type', 'n4', 'n1.nid = n4.entity_id');
+	// $query->join('taxonomy_term_data', 'n5', 'n2.field_job_category_tid = n5.tid');
+	// $query->fields('n1',array('title','nid','created'));
+	// $query->fields('n2',array('entity_type','bundle'));
+	// $query->fields('n3',array('field_job_location_value'));
+	// $query->fields('n4',array('field_job_type_value'));
+	// $query->fields('n5',array('tid','vid'));
+	// $query->condition('n1.status', 1);
+	// $query->condition('n1.type', 'jobboard');
+	// $query->condition('n1.title', 'title');
+	// $query->condition('n1.title', '%'.db_like($job_keys).'%', 'LIKE');
+	// $result = $query->execute()->fetchAll();
+}
+
+function jobboard_custom_search_form($form, &$form_state) {
+	$form['jobboard'] = array(
+		'#title' => "Search Form",
+		'#type' => 'fieldset',
+	);
+
+	$form['jobboard']['job_keys'] = array(
+		'#type' => 'textfield', 
+		'#title' => t('Keywords'), 
+		'#maxlength' => 128,
+		'#prefix' => '<div class="search">',
+		'#suffix' => '</div>',
+	);
+	$form['jobboard']['submit'] = array(
+		'#type' => 'submit', 
+		'#attributes' => array('class' => array('btn', 'btn-primary')),
+		'#value' => t('Search'),
+		// '#submit' => array('jobboard_ajax_search_form'),
+		'#ajax' => array(
+			'callback' => 'jobboard_ajax_search_form_callback',
+			'effect' => 'fade',
+		    'wrapper' => 'jobboard-search-result-id-wrapper',
+	    	'progress' => array('type' => 'throbber', 'message' => NULL),
+		),
+	); 
+	return $form;
+}
+
+function jobboard_ajax_search_form_callback($form, &$form_state) {
+	$job_keys = $_POST['job_keys'];
+
+	$dbquery = db_query("SELECT node.title AS node_title, node.nid AS nid, node.created AS node_created,
+							   field_data_field_job_category.entity_type AS entity, field_data_field_job_category.bundle AS bundle,
+							   field_data_field_job_location.field_job_location_value AS location,
+							   field_data_field_job_type.field_job_type_value AS type,
+							   taxonomy_term_data.tid AS taxoId,taxonomy_term_data.vid AS vocabId
+						FROM {node} node
+						LEFT JOIN {field_data_field_job_category} field_data_field_job_category
+							ON node.nid = field_data_field_job_category.entity_id
+						LEFT JOIN {field_data_field_job_location} field_data_field_job_location
+							ON node.nid = field_data_field_job_location.entity_id
+						LEFT JOIN {field_data_field_job_type} field_data_field_job_type
+							ON node.nid = field_data_field_job_type.entity_id
+						LEFT JOIN {taxonomy_term_data} taxonomy_term_data
+							ON field_data_field_job_category.field_job_category_tid = taxonomy_term_data.tid
+						WHERE ((node.status = '1') AND (node.type IN ('jobboard')) AND (node.title LIKE '%".$job_keys."%'))");
+	$dbresult = $dbquery->fetchAll();
+
+	// Output drupal messages.
+	$commands = array();
+	$commands[] = ajax_command_replace("jobboard-search-result-id-wrapper", $dbresult);
+	$commands[] = ajax_command_prepend(NULL, theme('status_messages'));
+	return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function jobboard_ajax_search_form($form, &$form_state) {
+	// $form_state['rebuild'] = TRUE;
+}

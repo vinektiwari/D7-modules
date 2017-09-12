@@ -1,0 +1,128 @@
+<?php
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the Job Board module;
+ *
+ * Author : Vinek T.;
+ * Date : 17th July'2017;
+ */
+
+/**
+ * Implements hook_schema();
+ * Write schema for making table to be created
+ */
+function jobboard_schema() {
+	$schema['job_applications'] = array(
+	    'description' => 'All applications would be filled by users for applying to job from job board module.',
+	    'fields' => array(
+			'jid' => array(
+				'type' => 'serial',
+				'length' => 11,
+				'not null' => TRUE,
+			),
+			'uid' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'applid' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'appl_fname' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+			'appl_lname' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+			'appl_email' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+			'appl_mobile' => array(
+				'type' => 'varchar',
+				'length' => 20,
+				'not null' => FALSE,
+			),
+			'appl_city' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+			'appl_status' => array(
+				'type' => 'varchar',
+				'length' => 100,
+				'not null' => FALSE,
+			),
+		),
+		'primary key' => array('jid'),
+		'auto increment' => 1
+	);
+	return $schema;
+} 
+
+
+/**
+ * Install the module and insert the record into the table if neccessory;
+ *
+ */
+function jobboard_install() {
+	// Create/add jobboard content type.
+	$types = array(
+		array(
+			'type' => 'jobboard',
+			'name' => 'Job Board',
+			'base' => 'node_content',
+			'description' => "Default job content type.",
+			'custom' => 1,
+			'modified' => 1,
+			'locked' => 0
+		),
+	);
+	foreach ($types as $type) {
+		$type = node_type_set_defaults($type);
+		node_type_save($type);
+		node_add_body_field($type);
+	}
+
+	// Create/add taxonomy vocabulary type
+	$vocabularies = taxonomy_vocabulary_machine_name_load("job_category");
+	if ($vocabularies->machine_name == 'job_category') { } else {
+		$vocabulary = new stdClass();
+		$vocabulary->name = 'Job Category';
+		$vocabulary->machine_name = "job_category";
+		$vocabulary->description = t('List of all job parent category and its sub categories present.');
+		$vocabulary->module = 'taxonomy';
+
+		taxonomy_vocabulary_save($vocabulary);
+		// $vid = $vocabulary->vid;
+	}
+}
+
+
+/**
+ * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ *
+ */
+function jobboard_uninstall() {
+	// Remove/delete jobboard content type.
+	// $newtype = 'jobboard';
+	// $sql = 'SELECT nid FROM {node} n WHERE n.type = :type';
+	// $result = db_query($sql, array(':type' => $newtype));
+	// $nodeids = array();
+	// foreach ($result as $row) {
+	// 	$nodeids[] = $row->nid;
+	// }
+	// node_delete_multiple($nodeids);
+	// node_type_delete($newtype);
+
+	// Remove/delete taxonomy vocabulary type
+	// $term->delete();
+}

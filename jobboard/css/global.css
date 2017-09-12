@@ -1,0 +1,23 @@
+
+#joblist {color: #000000}
+#joblist_length {margin-left: 5px}
+#joblist_length label select {padding: 5px;margin-left: 5px}
+#joblist_filter input {padding: 5px;margin-right: 5px}
+
+#edit-jobboard {border: 1px solid #cf2550;margin: 20px 0;}
+#edit-jobboard .form-item, .form-actions { margin-top: -1em; }
+#edit-jobboard legend span { color: #cf2550; font-size: 15px }
+#jobboard-custom-search-form label {padding: 5px 0;width: 100%;}
+#jobboard-custom-search-form input[type="text"] { clear: both;padding: 5px;width: 50%;}
+#joblist_wrapper {border: 1px solid #cf2550;padding-bottom: 10px;padding-top: 10px;}
+table#joblist tbody tr {background-color: #ffffff;height: 45px;line-height: 45px;}
+#joblist_info {padding-left: 5px;}
+
+
+.searchForm {border: 1px solid #ccc;margin: 15px 0;padding: 10px;}
+.searchForm label {color: #222222;font-weight: normal;font-size: 13px;font-family: "Roboto",sans-serif;}
+.title-field {float: left;padding-right: 10px;width: 40%;}
+.type-field {float: left;padding-right: 10px;width: 40%;}
+.search-btn {clear: both;padding-top: 10px;}
+.searchForm input[type="text"] {width:80%;padding: 10px;}
+.searchForm select {width:80%;padding: 10px;}

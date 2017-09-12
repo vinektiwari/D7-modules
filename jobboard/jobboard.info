@@ -1,0 +1,8 @@
+name = Job Board
+description = The advance job board module to have multiple jobs with their applied applications. 
+package = FusionSpan
+
+core = 7.x
+version = 7.x-0.1
+files[] = jobboard.install
+configure = admin/config/jobboard/applications

@@ -1,0 +1,8 @@
+name = Salesforce SSO
+description = This module allow users to authorized Salesforce by it's REST API console. 
+package = FusionSpan
+
+core = 7.x
+version = 7.x-0.1-dev
+files[] = salesforce_auth.install
+configure = admin/config/salesforce/auth/settings

@@ -1,0 +1,77 @@
+<?php
+
+/**
+ * Owner : FusionSpan LLC;
+ * Site URL : http://fusionspan.com/;
+ * Description : Install, update and uninstall functions for the netForum SSO module;
+ *
+ * Author : Vinek T.;
+ * Date : 7th July'2017;
+ */
+
+/**
+ * Implements hook_schema();
+ * Write schema for making table to be created
+ */
+function salesforce_auth_schema() {
+	$schema['fs_salesforce_auth'] = array(
+	    'description' => 'To set the salesforce configuration with sso settings.',
+	    'fields' => array(
+			'id' => array(
+				'type' => 'serial',
+				'length' => 11,
+				'not null' => TRUE,
+			),
+			'uid' => array(
+				'type' => 'int',
+				'length' => 11,
+				'not null' => FALSE,
+			),
+			'user_id' => array(
+				'type' => 'varchar',
+				'length' => 500,
+				'not null' => FALSE,
+			),
+			'user_type' => array(
+				'type' => 'varchar',
+				'length' => 1000,
+				'not null' => FALSE,
+			),
+			'user_nickname' => array(
+				'type' => 'varchar',
+				'length' => 1000,
+				'not null' => FALSE,
+			),
+			'user_displayname' => array(
+				'type' => 'varchar',
+				'length' => 1000,
+				'not null' => FALSE,
+			),
+		),
+		'primary key' => array('id'),
+		'auto increment' => 1,
+	);
+	return $schema;
+} 
+
+
+/**
+ * Install the module and insert the record into the table if neccessory;
+ *
+ */
+function salesforce_auth_install() {
+	
+}
+
+
+/**
+ * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ *
+ */
+function salesforce_auth_uninstall() {
+	variable_del('sf_cosumer_key');
+	variable_del('sf_cosumer_secret');
+	variable_del('sf_callback_url');
+	variable_del('sf_login_url');
+	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+}
