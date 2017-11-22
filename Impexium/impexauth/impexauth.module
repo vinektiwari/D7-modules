@@ -97,7 +97,7 @@ function impexauth_admin_settings($node, &$form_state) {
 		'#description'   => t('Impexium Client API Configuration'),
 		'#type'        => 'fieldset',
 		'#collapsible' => TRUE,
-		'#collapsed'   => FALSE,
+		'#collapsed'   => TRUE,
 	);
 	$form['impex_client_api']['client_api_url'] = array(
 		'#title'         => t('Client API URL'),
@@ -141,7 +141,7 @@ function impexauth_admin_settings($node, &$form_state) {
 		'#description'   => t('Impexium Other Site Settings'),
 		'#type'        => 'fieldset',
 		'#collapsible' => TRUE,
-		'#collapsed'   => FALSE,
+		'#collapsed'   => TRUE,
 	);
 	$form['impex_site_setting']['sso_token'] = array(
 		'#title'         => t('SSO Token Param Name'),
@@ -251,7 +251,7 @@ function impexauth_login_validate($form, &$form_state) {
 	if (($external_id || !$uid) && ((!$uid && !$user_by_email) || (isset($user_by_email->uid) && $uid == $user_by_email->uid && $external_id))) {
 		// External authentication
 		$info = json_decode(__authenticate($name,$pass));
-		if (empty($info->result->uri) || empty($info->result->ssoToken)) {
+		if (empty($info->result->uri) || empty($info->result->ssoToken) || empty($info->result->appToken)) {
 			return false;
 		}
 		
@@ -259,7 +259,7 @@ function impexauth_login_validate($form, &$form_state) {
 		$existing_uid = _impexauth_get_uid_from_userId($info->result->userId);
 		if ($existing_uid) {
 			// get customer info from impexium
-			$cust_info = __authViaSSOToken($info->result->ssoToken);
+			$cust_info = __authViaSSOToken($info->result->ssoToken, $info->result->appToken);
 			
         	// save new user
         	$existing_user = user_load($existing_uid);
@@ -271,7 +271,7 @@ function impexauth_login_validate($form, &$form_state) {
             user_save((object) ['uid' => $existing_user->uid], (array) $existing_user);
 
             //update into the fs_impexium_auth table
-            _impexauth_edit_user_from_uid($existing_uid,$info->result->appToken,$info->result->userToken);
+            _impexauth_edit_user_from_uid($existing_uid,$info->result->userToken);
 
             // update the authmap
             _impexauth_update_authmap($name, $existing_uid);
@@ -288,13 +288,13 @@ function impexauth_login_validate($form, &$form_state) {
 			}
 
 			// get customer info from impexium
-			$cust_info = __authViaSSOToken($info->result->ssoToken);
+			$cust_info = __authViaSSOToken($info->result->ssoToken, $info->result->appToken);
 			
 			// register the user.
 			user_external_login_register($name, 'impexauth');
 
 			//insert into the fs_impexium_auth table
-			_impexauth_set_userId_from_uid($user->uid,$info->result->userId,$info->result->appToken,$info->result->userToken);
+			_impexauth_set_userId_from_uid($user->uid,$info->result->userId,$info->result->userToken);
 
 			// save/update user email and load user object
 			$existingUser = user_load($user->uid);
@@ -309,8 +309,10 @@ function impexauth_login_validate($form, &$form_state) {
 		$form_state['uid'] = $user->uid;
 		$form ['#submit'] = [];
 
-		$_SESSION ['impex_sso'] = $info->result->ssoToken;
+		$_SESSION['impex_sso'] = $info->result->ssoToken;
+		$_SESSION['impex_app'] = $info->result->appToken;
 		module_invoke('impexgroups', 'groups_validate');
+		unset($_SESSION['impex_app']);
 	} else {
         user_login_authenticate_validate($form, $form_state);
     }
@@ -478,11 +480,11 @@ function _impexauth_get_external_uid_from_username($username) {
 function _impexauth_get_uid_from_userId($userId) {
 	return db_query('SELECT uid FROM {fs_impexium_auth} WHERE userId = :userId', [':userId' => $userId])->fetchField();
 }
-function _impexauth_set_userId_from_uid($uid,$userId,$appToken,$userToken) {
-	return db_insert('fs_impexium_auth')->fields(['uid'=>$uid,'userId'=>$userId,'appToken'=>$appToken,'userToken'=>$userToken])->execute();
+function _impexauth_set_userId_from_uid($uid,$userId,$userToken) {
+	return db_insert('fs_impexium_auth')->fields(['uid'=>$uid,'userId'=>$userId,'userToken'=>$userToken])->execute();
 }
-function _impexauth_edit_user_from_uid($uid,$appToken,$userToken) {
-	return db_update('fs_impexium_auth')->fields(['appToken'=>$appToken,'userToken'=>$userToken])->condition('uid', $uid)->execute();
+function _impexauth_edit_user_from_uid($uid,$userToken) {
+	return db_update('fs_impexium_auth')->fields(['userToken'=>$userToken])->condition('uid', $uid)->execute();
 }
 function _impexauth_get_userId_from_uid($uid) {
 	return db_query('SELECT userId FROM {fs_impexium_auth} WHERE uid = :uid', [':uid' => $uid,])->fetchField();
@@ -649,7 +651,7 @@ function __authenticate($name,$pass) {
  *
  * @param string $ssoToken
  */
-function __authViaSSOToken($ssoToken) {
+function __authViaSSOToken($ssoToken, $appToken) {
     $auth = __authRequest();
     
     // matches the current api
@@ -661,7 +663,6 @@ function __authViaSSOToken($ssoToken) {
 	
 	$clientUrl = $matches[0];
 	$responseToken = $auth['accessToken'];
-	$appToken = $auth['appToken'];
 	if($responseToken){
 		$headers = array(
 			'AccessToken:'.trim($responseToken),

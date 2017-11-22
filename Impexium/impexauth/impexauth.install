@@ -36,11 +36,6 @@ function impexauth_schema() {
 				'length' => 100,
 				'not null' => FALSE,
 			),
-			'appToken' => array(
-				'type' => 'varchar',
-				'length' => 500,
-				'not null' => FALSE,
-			),
 			'userToken' => array(
 				'type' => 'varchar',
 				'length' => 500,
