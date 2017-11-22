@@ -1,0 +1,777 @@
+<?php
+/**
+ * @file
+ * Integrates Netforum authentication system into Drupal login.
+ */
+
+/**
+ * Implements hook_menu().
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_menu/7
+ *
+ * Adds the module admin settings page in the admin menu
+ *
+ */
+function nagc_netforum_sso_menu() {
+
+  $items['admin/config/people/nagc_netforum_sso'] = array(
+    'title' => 'Netforum MX Online SSO',
+    'description' => 'Configuration settings to integrate the Netforum MX Online into Drupal with SSO',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('nagc_netforum_sso_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'nagc_netforum_sso.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_menu_alter()
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_menu_alter/7
+ *
+ * Removes the forgot password page from the Drupal login page
+ *
+ * @param $items
+ * Associative array of menu router definitions returned from hook_menu().
+ *
+ */
+function nagc_netforum_sso_menu_alter(&$items) {
+  if(variable_get('nagc_netforum_sso_sso', NULL)) {
+    // Disable password reset page if indicated in module settings.
+    $disable_pass_link = variable_get('nagc_netforum_sso_sso_var_ForgotPass', NULL);
+    if ($disable_pass_link) {
+      unset($items['user/password']);
+    }
+
+    // Disable register new account page if indicated in module settings.
+    $disable_account_link = variable_get('nagc_netforum_sso_sso_var_Register', NULL);
+    if ($disable_account_link) {
+      unset($items['user/register']);
+    }
+
+    // Disable edit my profile page if indicated in module settings.
+    $disable_profile_link = variable_get('nagc_netforum_sso_sso_var_Profile', NULL);
+    global $user;
+    if ($disable_profile_link) {
+      $items['user/%user_category/edit']['type'] = MENU_CALLBACK;
+      $items['user/%user']['type'] = MENU_CALLBACK;
+    }
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_form_alter/7
+ *
+ * Replaces the Drupal standard login validation/inserts the custom validation handler, and
+ * replaces standard Drupal user links
+ *
+ * @param $form
+ * Nested array of form elements that comprise the form.
+ *
+ * @param $form_state
+ * A keyed array containing the current state of the form. The arguments that drupal_get_form()
+ * was originally called with are available in the array $form_state['build_info']['args'].
+ *
+ * @param $form_id
+ * String representing the name of the form itself. Typically this is the name of the function that generated the form.
+ *
+ */
+function nagc_netforum_sso_form_alter(&$form, &$form_state, $form_id) {
+  if(variable_get('nagc_netforum_sso_sso', NULL)) {
+    if ($form_id == 'user_login_block' || $form_id == 'user_login' || $form_id == 'user_login_form') {
+      unset($form['links']);
+      //$form['actions']['#weight'] = 5;
+
+      $disable_account_link = variable_get('nagc_netforum_sso_sso_var_Register', NULL);
+      $disable_profile_link = variable_get('nagc_netforum_sso_sso_var_Profile', NULL);
+      $disable_fp_link = variable_get('nagc_netforum_sso_sso_var_ForgotPass', NULL);
+
+      // unset($_REQUEST['destination'], $_REQUEST['edit']['destination']);
+      // unset($_GET['destination']);
+
+      $items = array();
+
+      if ($disable_account_link == 2) {
+        $items[] = l(t('Create new account'), variable_get('nagc_netforum_sso_sso_val_Register', NULL), array('title' => t('Create a new user account.')));
+      }
+      elseif ($disable_account_link == 0) {
+        $items[] = l(t('Create new account'), 'user/register', array('title' => t('Create a new user account.')));
+      }
+
+      if ($disable_fp_link == 2) {
+        $items[] = l(t('Forgot Password?'), variable_get('nagc_netforum_sso_sso_val_ForgotPass', NULL), array('title' => t('Forgot Password?')));
+      }
+      elseif ($disable_fp_link == 0) {
+        $items[] = l(t('Forgot Password?'), 'user/password', array('title' => t('Forgot Password?')));
+      }
+
+      /* 
+      if ($disable_profile_link == 2) {
+        $_REQUEST['destination'] = variable_get('nagc_netforum_sso_sso_val_Profile', NULL);
+      } 
+	*/
+      $form['links'] = array('#value' => theme('item_list', $items));
+
+      // Overwrite Drupal's validation handler and substitute a custom one.
+      $form['#validate'] = array('nagc_netforum_sso_login_validate');
+    }
+  }
+
+}
+
+/**
+ * Implements hook_user_logout()
+ * https://api.drupal.org/api/drupal/modules!user!user.api.php/function/hook_user_logout/7
+ *
+ * Adds an additional logout action to logout process so the user is logged out of CRM
+ * as well as Drupal
+ *
+ * @param $account
+ * The user object on which the operation was just performed.
+ *
+ */
+function nagc_netforum_sso_logout($account) {
+   //check if user is exempt from sso and if so delete the user session on Netforum
+ $userinfo = nagc_netforum_sso_checkUser($account->name);
+ if ((!$userinfo['exempt']) && (variable_get('nagc_netforum_sso_sso', NULL))) {
+   $res = db_query("SELECT * FROM {users} WHERE uid = :uid", array(':uid' => $account->uid));
+   if ($res && $res->rowCount() > 0 && $obj = $res->fetchObject()) {
+     $token = $obj->cst_ssotoken;
+     $cstkey = $obj->cst_id;
+   }
+   try {
+     $client = new SoapClient(variable_get('nagc_netforum_sso_authurl', NULL), array('trace' => TRUE));
+     $parameters   = array(
+               'szCstKey'=> $cstkey,
+               'AuthToken' => $token,
+     );
+       $response = $client->LogOutCst($parameters);
+     } catch (Exception $e) {
+       $message = $e->getMessage();
+       drupal_set_message(t("Cannot establish a connection the membership database. Please contact the site administrator"));
+       return FALSE;
+     }
+   unset($client);
+ }
+}
+
+/**
+ * Validation function for the login form. Tests if the user is exempt and if not
+ * send them to the custom validation function to authenticate through web service.
+ * If they are exempt, it logs them into Drupal bypassing the external login process.
+ *
+ * @param $form
+ * Nested array of form elements that comprise the form.
+ *
+ * @param $form_state
+ * A keyed array containing the current state of the form. The arguments that drupal_get_form()
+ * was originally called with are available in the array $form_state['build_info']['args'].
+ *
+ */
+function nagc_netforum_sso_login_validate(&$form, &$form_state) {
+  	// Check if user is in database.
+	$username = check_plain($form_state['values']['name']);
+   	$userinfo = nagc_netforum_sso_checkUser($username);
+
+    //Check if user is exempt from the SSO process. If so, log them into Drupal. If not, send them through the custom
+    //validation
+    if (!$userinfo['exempt']) {
+
+      $auth_rtn = nagc_netforum_sso_authenticate($form_state['values'], $userinfo['uid'], $form);
+      if (!$auth_rtn) {
+        // If unsuccessful login, redirect to user login page.
+	unset($_REQUEST['destination'], $_REQUEST['edit']['destination']);
+        unset($_GET['destination']);
+        drupal_set_message(t("Sorry, unrecognized username or password"), 'error');
+        drupal_goto('user');
+      }
+     /* 
+	else {
+        if (variable_get('nagc_netforum_sso_sso_var_Profile', NULL) == 2) {
+           unset($_REQUEST['destination'], $_REQUEST['edit']['destination']);
+           drupal_goto(variable_get('nagc_netforum_sso_sso_val_Profile', NULL));
+        }
+      } 
+	*/
+    }
+    else {
+	   user_login_authenticate_validate($form, $form_state);
+    }
+}
+
+/**
+ * Authentication function to call Netforum's authentication web service
+ * and authenticate user
+ *
+ * @param $form_values
+ * A keyed array containing the current values of the form.
+ *
+ * @param $uid
+ * The user id of the user attempted to login
+ *
+ * @param $form
+ * Nested array of form elements that comprise the form.
+ *
+ */
+function nagc_netforum_sso_authenticate($form_values, $uid, &$form) {
+  $username = check_plain($form_values['name']);
+  $pass = check_plain($form_values['pass']);
+
+  if ($username && $pass != FALSE) {
+
+
+	 // Call the Authentication webservice
+
+    // Step 1: Authentication with eWeb service
+
+      try {
+      $client = new SoapClient(variable_get('nagc_netforum_sso_authurl', NULL), array('trace' => TRUE));
+      $parameters   = array(
+        'userName' => variable_get('nagc_netforum_sso_authuser', NULL),
+        'password' => variable_get('nagc_netforum_sso_authpass', NULL),
+        );
+        $step1response = $client->Authenticate($parameters);
+        $token = array();
+        $token[1] = $step1response->AuthenticateResult;
+    } catch (Exception $e) {
+      $message = $e->getMessage();
+      watchdog('user', 'Could not authenticate to NetForum SignOn: %message', array('%message' => $message), WATCHDOG_WARNING);
+      drupal_set_message(t("Cannot establish a connection the membership database. Please contact the site administrator"));
+      return FALSE;
+    }
+
+    unset($client);
+
+    // Step 2: Get sign on token
+
+    try {
+      $client = new SoapClient(variable_get('nagc_netforum_sso_authurl', NULL), array('trace' => TRUE));
+      $parameters   = array(
+          'Email' => $username,
+          'Password' => $pass,
+          'AuthToken' => $token[1],
+          'Minutes' => 15,
+        );
+        $step2response = $client->GetSignOnToken($parameters);
+        $token[2] = $step2response->GetSignOnTokenResult;
+    } catch (Exception $e) {
+      $message = $e->getMessage();
+      watchdog('user', 'Could not get sign on token from NetForum: %message', array('%message' => $message), WATCHDOG_WARNING);
+      drupal_set_message(t("User validation error occurred. Please check your credentials"));
+      return FALSE;
+    }
+
+    unset($client);
+
+    // Step 3: OnDemand Authentication
+
+    try {
+      $client = new SoapClient(variable_get('nagc_netforum_sso_xweburl', NULL), array('trace' => TRUE));
+      $client->__setSoapHeaders(NULL);
+      $parameters   = array(
+        'userName' => variable_get('nagc_netforum_sso_authuser', NULL),
+        'password' => variable_get('nagc_netforum_sso_authpass', NULL),
+        );
+        $step3response = $client->Authenticate($parameters);
+        $ns = $step3response->AuthenticateResult;
+        $result = nagc_netforum_sso_xml2array($client->__getLastResponse());
+        $token[3] = $result['soap:Envelope']['soap:Header']['AuthorizationToken']['Token'];
+    } catch (Exception $e) {
+      $message = $e->getMessage();
+      watchdog('user', 'Could not authenticate to NetForum xWeb: %message', array('%message' => $message), WATCHDOG_WARNING);
+      drupal_set_message(t("Cannot establish a connection the membership database. Please contact the site administrator"));
+      return FALSE;
+    }
+
+
+    // Step 4: Check E web user for Member Type and adds to membership array
+
+    try {
+
+      $headerbody = array('Token' => $token[3]);
+      $header = new SoapHeader($ns, "AuthorizationToken", $headerbody);
+      $client->__setSoapHeaders($header);
+      $parameters = array(
+          'szEmail' => $username,
+          'szPassword' => $pass,
+      );
+      $response = $client->CheckEWebUser($parameters);
+
+      $userresult =  nagc_netforum_sso_xml2array($client->__getLastResponse());
+      $memberships = array();
+      $token[4] = $userresult['soap:Envelope']['soap:Header']['AuthorizationToken']['Token'];
+      $cst_key =  $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['cst_key'];
+      $ssotoken = $token[2];
+      //$ssotoken = $cst_key;
+      $cst_id = $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['cst_id'];
+      $name = $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['cst_name_cp'];
+      $mail = $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['eml_address'];
+      $memberships[] = $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['ProductCode'];
+      $memberstatus = $userresult['soap:Envelope']['soap:Body']['CheckEWebUserResponse']['CheckEWebUserResult']['Results']['Result']['MemberStatus'];
+
+    } catch (Exception $e) {
+      $message = $e->getMessage();
+      watchdog('user', 'Could not check eWeb User NetForum: %message', array('%message' => $message), WATCHDOG_WARNING);
+      drupal_set_message(t("Cannot establish a connection the membership database. Please contact the site administrator"));
+      return FALSE;
+    }
+
+    // #5 GetFacadeObject: Check E web user for Profession Code and adds to membership array
+
+    try {
+      $client->__setSoapHeaders(NULL);
+      $parameters = array(
+          'szObjectName' => 'individual',
+          'szObjectKey' => $cst_key,
+      );
+      $headerbody = array('Token' => $token[4]);
+      $header = new SoapHeader($ns, "AuthorizationToken", $headerbody);
+      $client->__setSoapHeaders($header);
+      $response = $client->GetFacadeObject($parameters);
+      $result =  nagc_netforum_sso_xml2array($client->__getLastResponse());
+      if(isset($result['soap:Envelope']['soap:Body']['GetFacadeObjectResponse']['GetFacadeObjectResult']['IndividualObject'])) {
+        if(isset($result['soap:Envelope']['soap:Body']['GetFacadeObjectResponse']['GetFacadeObjectResult']['IndividualObject']['ind_custom_text_01'])) {
+          $memberships[] = $result['soap:Envelope']['soap:Body']['GetFacadeObjectResponse']['GetFacadeObjectResult']['IndividualObject']['ind_custom_text_01'];
+        }
+      }
+
+    } catch (Exception $e) {
+      $message = $e->getMessage();
+      watchdog('user', 'Could not check User Membership: %message', array('%message' => $message), WATCHDOG_WARNING);
+      drupal_set_message(t("Cannot establish Customer Memberships. Please contact the site administrator"));
+      return FALSE;
+    }
+    unset($client);
+
+    // END eWeb call for authentication
+
+
+      //Check if user authenticates against CRM. If not fail login. If so, continue process.
+	  if (isset($memberships)) {
+
+
+		$roles = array_filter(array_unique($memberships));
+        watchdog('user', '<pre>'. print_r($memberships, TRUE) .'</pre>');
+
+        // Check if member type matches.
+	    $drupalroles = user_roles(TRUE, NULL);
+
+		//Map CRM roles to Drupal roles (mapping can be found in module settings page)
+	    foreach ($drupalroles as $key => $var) {
+		  if (variable_get('nagc_netforum_sso_role_val_' . $key, NULL)) {
+		    foreach ($roles as $rolevar) {
+		      if (in_array($rolevar, nagc_netforum_sso_textarea_to_array(variable_get('nagc_netforum_sso_role_val_' . $key, NULL)))) {
+		        $newroles[$key] = TRUE;
+			  }
+		    }
+		  }
+		}
+      //Test if membership status indicates that user should not receive any role
+    if (($memberstatus == 'Dropped') || ($memberstatus == 'Inactive')) {
+      //$pos = array_search('member', $newroles);
+      unset($newroles);
+    }
+
+
+        //$newroles[4] = TRUE;
+	    $newroles[DRUPAL_AUTHENTICATED_RID] = TRUE;
+
+        //Update the user table with all relevant information
+		$update = array(
+	      'mail' => $mail,
+		  'name' => $username,
+		  'pass' => $pass,
+		  'status' => 1,
+		  'init' => $mail,
+          'cst_key' => $cst_key,
+          'cst_ssotoken' => $ssotoken,
+          'cst_id' => $cst_id,
+          'cst_web_password' => $name,
+		  'roles' => $newroles,
+		  'access' => REQUEST_TIME,
+		);
+
+        if($uid) {
+		  $account = user_load($uid);
+		  watchdog('user', 'Updated user %user %uid using module %module.', array('%user' => $username, '%uid' => $uid, '%module' => 'nagc_netforum_sso'), WATCHDOG_NOTICE, l(t('edit'), 'user/' . $account->uid . '/edit'));
+		  $account = user_save($account, $update);
+		}
+		else {
+		  $account = user_save(NULL, $update);
+		  watchdog('user', 'New external user: %user using module %module.', array('%user' => $username, '%module' => 'nagc_netforum_sso'), WATCHDOG_NOTICE, l(t('edit'), 'user/' . $account->uid . '/edit'));
+		  $uid = $account->uid;
+		}
+
+		// Log in external account.
+		if (!$account) {
+		  drupal_set_message(t("Error saving user account."), 'error');
+		  return FALSE;
+		}
+
+
+		//global $user;
+		watchdog('user', 'User id = %uid using module %module.', array('%uid' => $uid, '%module' => 'nagc_netforum_sso'), WATCHDOG_NOTICE, l(t('edit'), 'user/' . $account->uid . '/edit'));
+		user_set_authmaps($account, array("authname_nagc_netforum_sso" => $username));
+		user_external_login_register($username, 'nagc_netforum_sso');
+
+		$form_state['uid'] = $account->uid;
+		$form['#submit'] = array();
+
+
+        // User authenticated and was updated in Drupal - login success. Returned token.
+        return $ssotoken;
+        // Exempt list and if so authenticate only through Drupal.
+      }
+
+      // User did not externally authenticate - login failed.
+      return FALSE;
+  }
+  else {
+    // User did not enter both username & password in login form-login failed.
+    return FALSE;
+  }
+}
+
+/**
+ * Check if user is exempt from login process (uid's are set on settings page)
+ *
+ * @param $user
+ * The inputted user name in the login form
+ */
+function nagc_netforum_sso_checkUser($username) {
+	$uid = NULL;
+   	$res = db_query("SELECT uid FROM {users} WHERE name = :name", array(':name' => $username));
+	if ($res && $res->rowCount() > 0 && $obj = $res->fetchObject()) {
+	  $uid = $obj->uid;
+    }
+    // Find out if the user is in the list of exempt users.
+    $list = nagc_netforum_sso_textarea_to_array(variable_get('nagc_netforum_sso_exempt', NULL));
+
+	if (!in_array(1, $list)) {
+	  // Add userid 1 if not in the list to ensure site admin uses normal authentication.
+	  $list[] = 1;
+	}
+
+    // Test if userid 0 has accidentally been added to list.
+    $list = nagc_netforum_sso_removeItemFromArray($list, '');
+
+    $userinfo['uid'] = $uid;
+    $userinfo['exempt'] = (in_array($uid, $list));
+
+    return $userinfo;
+}
+
+/**
+ * Implements hook_token_info().
+ * You first of all have to define your token in the hook_token_info(): -
+See more at: http://www.whenwhowhere.com/tech-blog/create-custom-token-drupal-7#sthash.6IQaG7A5.dpuf
+If you define your token in ['tokens']['user'] like I did it will appear in the available tokens under user
+but you can change it to another option, in my case this is what made most sense.
+This will apply for all token lists which can retrieve user information,
+ *
+ */
+function nagc_netforum_sso_token_info() {
+    $info['tokens']['user']['netforum'] = array(
+        'name' => t('netFORUM SSO Token'),
+        'description' => t('Returns the netFORUM SSO Token'),
+    );
+    $info['tokens']['user']['netforum_name'] = array(
+         'name' => t('netFORUM first and last name'),
+         'description' => t('Returns the name as stored in netFORUM'),
+    );
+    return $info;
+}
+/* Now we need to actually return the contents (or replacement value) of this token and
+ * this is done in the hook_tokens():
+*/
+/**
+ * Implements hook_tokens().
+ */
+function nagc_netforum_sso_tokens($type, $tokens, array $data = array(), array $options = array()) {
+    $replacements = array();
+    global $user;
+    $uid = $user->uid;
+    if ($type == 'current-user') {
+        foreach ($tokens as $name => $original) {
+            switch ($name) {
+                case 'netforum':
+                  $res = db_query("SELECT cst_ssotoken FROM {users} WHERE uid = :uid", array(':uid' => $uid));
+                  if ($res && $res->rowCount() > 0 && $obj = $res->fetchObject()) {
+                    $cst_token = $obj->cst_ssotoken;
+                  }
+                  else {
+                    $cst_token = "";
+                  }
+                  $replacements[$original] = $cst_token;
+                  break;
+              case 'netforum_name':
+                $res = db_query("SELECT cst_web_password FROM {users} WHERE uid = :uid", array(':uid' => $uid));
+                  if ($res && $res->rowCount() > 0 && $obj = $res->fetchObject()) {
+                    $cst_name = $obj->cst_web_password;
+                  }
+                  else {
+                    $cst_name = "";
+                  }
+                  $replacements[$original] = $cst_name;
+                  break;
+
+            }
+        }
+    }
+    return $replacements;
+}
+
+/**
+ * Receive xml from web services and parse in an easier to use array
+ *
+ * @param $xml
+ * xml string with information to parse into an array
+ *
+ */
+function nagc_netforum_sso_SetResultArray($xml) {
+  	$tag = (stristr($xml,'<Errors>')) ? 'Error' : (stristr($xml,'<User') ? 'User' : '');
+	  if (!empty($tag)) {
+	    if ($tag == "User") {
+	      $xml = nagc_netforum_sso_get_string_between($xml,"<$tag "," />");
+	      $xml = str_replace('="','=',$xml);
+	      $xml = str_replace('"','||',$xml);
+	      $response_array = explode('||', $xml);
+	      foreach ($response_array as $k=>$v) {
+	        if (!empty($v)) {
+	          $v=explode("=",$v);
+	          $v[0] = trim($v[0]);
+	          $results[$v[0]]=$v[1];
+	        }
+	      }
+	    }
+	    if ($tag == "Error") {
+	      $response = nagc_netforum_sso_get_string_between($xml,"Description=\"","\"");
+	      return $response;
+	     }
+	   }
+	  return $results;
+}
+
+/**
+ * Values in a text area are parsed into an array
+ *
+ * @param $var_name
+ * The name of the variable in the Drupal variable table
+ */
+function nagc_netforum_sso_textarea_to_array($var_name) {
+  $list = array();
+
+  // Get the list of values from textarea.
+  $list = explode("\n", $var_name);
+
+  // Remove new lines and other stuff from the values.
+  $sanitized_list = array();
+
+  foreach ($list as $value) {
+    if (strlen(trim($value)))
+    $sanitized_list[] = trim($value);
+  }
+  // Return list.
+  return $sanitized_list;
+}
+
+/**
+ * Remove unwanted item from array.
+ *
+ * @param $list
+ * The array that needs items removed
+ *
+ * @param $item
+ * The item to be removed
+ */
+function nagc_netforum_sso_removeItemFromArray($list, $item) {
+  return array_diff($list, (array)$item);
+}
+
+/**
+ * Receives text from parsed xml and removes tags.
+ *
+ * @param $string
+ * xml string
+ *
+ * @param $start
+ * string to remove from the front of the xml string
+ *
+ * @param $end
+ * strong to remove from the end of the xml string
+ *
+ */
+function nagc_netforum_sso_get_string_between($string, $start, $end) {
+  $string = "" . $string;
+  $ini = strpos($string, $start);
+  if ($ini == 0) return "";
+  $ini += strlen($start);
+  $len = strpos($string, $end, $ini) - $ini;
+  return substr($string, $ini, $len);
+}
+
+/**
+ * Does error checking on email returned from webservice
+ *
+ * @param $username
+ * username from login
+ *
+ * @param $email
+ * returned email from web server
+ *
+ */
+function nagc_netforum_sso_check_email($username, $email) {
+    //test if any email is coming over from web service. If not assign a fake one
+    if (!$email) {
+        return $username . '@noemail.com';
+    }
+
+    //If an email is coming over, check if there is user is in the database with that email already.
+    //If the names match, then no changes. If not, assign the new user a fake email
+    $res = db_query("SELECT * FROM {users} WHERE mail = :mail", array(':mail' => $email));
+    if ($res && $res->rowCount() > 0 && $obj = $res->fetchObject()) {
+        if ($username == $obj->name) {
+            return $email;
+        }
+        else {
+            return $username . '@noemail.com';
+        }
+    }
+    else {
+        return $email;
+    }
+}
+
+/**
+ * Converts the given XML text to an array in the XML structure.
+ *
+ * @param  $content    		A text string that contains the xml to be parsed.
+ * @param  $get_attributes 	1 or 0. If this is 1 the function will get the attributes as well as the tag values - this results in a different array structure in the return value.
+ * @return $priority      	Can be 'tag' or 'attribute'. This will change the way the resulting array sturcture. For 'tag', the tags are given more importance.
+ */
+
+function nagc_netforum_sso_xml2array($contents, $get_attributes=1, $priority = 'tag') {
+  if(!$contents) return array();
+
+  if(!function_exists('xml_parser_create')) {
+    //print "'xml_parser_create()' function not found!";
+    return array();
+  }
+
+  //Get the XML parser of PHP - PHP must have this module for the parser to work
+  $parser = xml_parser_create('');
+  xml_parser_set_option($parser, XML_OPTION_TARGET_ENCODING, "UTF-8"); # http://minutillo.com/steve/weblog/2004/6/17/php-xml-and-character-encodings-a-tale-of-sadness-rage-and-data-loss
+  xml_parser_set_option($parser, XML_OPTION_CASE_FOLDING, 0);
+  xml_parser_set_option($parser, XML_OPTION_SKIP_WHITE, 1);
+  xml_parse_into_struct($parser, trim($contents), $xml_values);
+  xml_parser_free($parser);
+
+  if(!$xml_values) return;//Hmm...
+
+  //Initializations
+  $xml_array = array();
+  $parents = array();
+  $opened_tags = array();
+  $arr = array();
+
+  $current = &$xml_array; //Refference
+
+  //Go through the tags.
+  $repeated_tag_index = array();//Multiple tags with same name will be turned into an array
+  foreach($xml_values as $data) {
+    unset($attributes,$value);//Remove existing values, or there will be trouble
+
+    //This command will extract these variables into the foreach scope
+    // tag(string), type(string), level(int), attributes(array).
+    extract($data);//We could use the array by itself, but this cooler.
+
+    $result = array();
+    $attributes_data = array();
+
+    if(isset($value)) {
+      if($priority == 'tag') $result = $value;
+      else $result['value'] = $value; //Put the value in a assoc array if we are in the 'Attribute' mode
+    }
+
+    //Set the attributes too.
+    if(isset($attributes) and $get_attributes) {
+      foreach($attributes as $attr => $val) {
+        if($priority == 'tag') $attributes_data[$attr] = $val;
+        else $result['attr'][$attr] = $val; //Set all the attributes in a array called 'attr'
+      }
+    }
+
+    //See tag status and do the needed.
+    if($type == "open") {//The starting of the tag '<tag>'
+      $parent[$level-1] = &$current;
+      if(!is_array($current) or (!in_array($tag, array_keys($current)))) { //Insert New tag
+        $current[$tag] = $result;
+        if($attributes_data) $current[$tag. '_attr'] = $attributes_data;
+        $repeated_tag_index[$tag.'_'.$level] = 1;
+
+        $current = &$current[$tag];
+
+      } else { //There was another element with the same tag name
+
+        if(isset($current[$tag][0])) {//If there is a 0th element it is already an array
+          $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
+          $repeated_tag_index[$tag.'_'.$level]++;
+        } else {//This section will make the value an array if multiple tags with the same name appear together
+          $current[$tag] = array($current[$tag],$result);//This will combine the existing item and the new item together to make an array
+          $repeated_tag_index[$tag.'_'.$level] = 2;
+
+          if(isset($current[$tag.'_attr'])) { //The attribute of the last(0th) tag must be moved as well
+            $current[$tag]['0_attr'] = $current[$tag.'_attr'];
+            unset($current[$tag.'_attr']);
+          }
+
+        }
+        $last_item_index = $repeated_tag_index[$tag.'_'.$level]-1;
+        $current = &$current[$tag][$last_item_index];
+      }
+
+    } elseif($type == "complete") { //Tags that ends in 1 line '<tag />'
+      //See if the key is already taken.
+      if(!isset($current[$tag])) { //New Key
+        $current[$tag] = $result;
+        $repeated_tag_index[$tag.'_'.$level] = 1;
+        if($priority == 'tag' and $attributes_data) $current[$tag. '_attr'] = $attributes_data;
+
+      } else { //If taken, put all things inside a list(array)
+        if(isset($current[$tag][0]) and is_array($current[$tag])) {//If it is already an array...
+
+          // ...push the new element into that array.
+          $current[$tag][$repeated_tag_index[$tag.'_'.$level]] = $result;
+
+          if($priority == 'tag' and $get_attributes and $attributes_data) {
+            $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
+          }
+          $repeated_tag_index[$tag.'_'.$level]++;
+
+        } else { //If it is not an array...
+          $current[$tag] = array($current[$tag],$result); //...Make it an array using using the existing value and the new value
+          $repeated_tag_index[$tag.'_'.$level] = 1;
+          if($priority == 'tag' and $get_attributes) {
+            if(isset($current[$tag.'_attr'])) { //The attribute of the last(0th) tag must be moved as well
+
+              $current[$tag]['0_attr'] = $current[$tag.'_attr'];
+              unset($current[$tag.'_attr']);
+            }
+
+            if($attributes_data) {
+              $current[$tag][$repeated_tag_index[$tag.'_'.$level] . '_attr'] = $attributes_data;
+            }
+          }
+          $repeated_tag_index[$tag.'_'.$level]++; //0 and 1 index is already taken
+        }
+      }
+
+    } elseif($type == 'close') { //End of tag '</tag>'
+      $current = &$parent[$level-1];
+    }
+  }
+
+  return($xml_array);
+}
+

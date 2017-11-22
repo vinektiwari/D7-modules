@@ -1,0 +1,12 @@
+name = NAGC Netforum Online SSO
+description = Connects Netforum user base to Drupal and assigns roles
+package = Authentication
+
+core = 7.x
+
+dependencies[] = php
+
+files[]=nagc_netforum_sso.install
+files[]=nagc_netforum_sso.module
+files[]=nagc_netforum_sso.inc
+configure=admin/config/people/nagc_netforum_sso

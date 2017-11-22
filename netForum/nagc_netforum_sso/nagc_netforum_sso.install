@@ -1,0 +1,80 @@
+<?php
+/**
+ * Implements hook_install().
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_install/7
+ *
+ */
+function nagc_netforum_sso_install() {
+  foreach (nagc_netforum_sso_new_fields() as $name => $field) {
+    db_add_field('users', $name, $field);
+  }
+}
+
+function nagc_netforum_sso_new_fields() {
+  return array(
+      'cst_key' => array(
+          'description' => t('The customer key corresponding to the netFORUM customer'),
+          'type' => 'varchar',
+          'length' => 36,
+          'not null' => FALSE,
+      ),
+      'cst_ssotoken' => array(
+          'description' => t('The customer name'),
+          'type' => 'varchar',
+          'length' => 500,
+          'not null' => FALSE,
+      ),
+      'cst_id' => array(
+          'description' => t('The customer ID'),
+          'type' => 'varchar',
+          'length' => 10,
+          'not null' => FALSE,
+      ),
+      'cst_web_password' => array(
+          'description' => t('The SSO Token'),
+          'type' => 'varchar',
+          'length' => 400,
+          'not null' => FALSE,
+      ),
+  );
+}
+
+/**
+ * Implements hook_schema_alter().
+ */
+function nagc_netforum_sso_schema_alter(&$schema) {
+  $schema['users']['fields'] = array_merge($schema['users']['fields'], nagc_netforum_sso_new_fields());
+}
+
+
+/**
+ * Implements hook_uninstall().
+ * https://api.drupal.org/api/drupal/modules!system!system.api.php/function/hook_uninstall/7
+ *
+ */
+function nagc_netforum_sso_uninstall() {
+
+  // Remove the rows from the variables table.
+  variable_del('nagc_netforum_sso_authurl');
+  variable_del('nagc_netforum_sso_xweburl');
+  variable_del('nagc_netforum_sso_authpass');
+  variable_del('nagc_netforum_sso_authuser');
+
+
+  foreach (nagc_netforum_sso_role_var() as $key => $var) {
+    variable_del('nagc_netforum_sso_role_var_' . $key);
+    variable_del('nagc_netforum_sso_role_val_' . $key);
+  }
+
+  foreach (user_roles($membersonly = TRUE, $permission = NULL) as $key => $var) {
+    variable_del('nagc_netforum_sso_role_val_' . $key);
+  }
+
+  variable_del('nagc_netforum_sso_exempt');
+
+  variable_del('nagc_netforum_sso_sso');
+
+  drupal_uninstall_schema('nagc_netforum_sso');
+
+  drupal_set_message(t('Netforum SSO module has been successfully uninstalled.'));
+}
