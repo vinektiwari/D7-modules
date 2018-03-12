@@ -1,16 +1,12 @@
 <?php
 /**
- * Owner : FusionSpan LLC;
- * Site URL : http://fusionspan.com/;
- * Description : Install, update and uninstall functions for the netForum SSO module;
- *
- * Date : 23rd March'2017;
  * Author : Vinek T.;
+ * Description : Install, update and uninstall functions for the netFORUM SSO;
+ * Date : 23rd March'2017;
  */
 
 /**
  * Implements hook_schema();
- *
  */
 function netauth_schema() {
 	//Check if table exists, if not install the schema.
@@ -57,12 +53,12 @@ function netauth_schema() {
  *
  */
 function netauth_install() {
-	
+	drupal_set_message(t('Schema for netFORUM module has been initiated.'));
 }
 
 
 /**
- * Uninstal the Drupal module and clear out all variables/fields from database tabel;
+ * Uninstal the module and clear out all variables/fields from database tabel;
  *
  */
 function netauth_uninstall() {
@@ -76,5 +72,5 @@ function netauth_uninstall() {
 	variable_del('netauth_enabled');
 	variable_del('netauth_member_url');
 	variable_del('netauth_non_member_url');
-	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+	drupal_set_message(t('Schema for netFORUM module has been uninstalled.'));
 }

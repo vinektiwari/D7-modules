@@ -18,7 +18,7 @@ INSTALLATION
 
 3) Login to Drupal admin (back-end) panel.
 
-4) Go to -> Modules -> FusionSpan -> Impexium SSO and enable it.
+4) Go to -> Modules -> Impexium -> Impexium SSO and enable it.
 
 5) After enabling, go to configuration of module and set required option for to make run the module and SAVE settings.
 

@@ -1,11 +1,7 @@
 <?php
-
 /**
- * Owner : FusionSpan LLC;
- * Site URL : http://fusionspan.com/;
- * Description : Install, update and uninstall functions for the netForum SSO module;
- *
  * Author : Vinek T.;
+ * Description : Install, update and uninstall functions for the Salesforce SSO module;
  * Date : 7th July'2017;
  */
 
@@ -60,7 +56,7 @@ function salesforce_auth_schema() {
  *
  */
 function salesforce_auth_install() {
-	
+	drupal_set_message(t('Salesforce schema has been successfully initiated.'));
 }
 
 
@@ -73,5 +69,5 @@ function salesforce_auth_uninstall() {
 	variable_del('sf_cosumer_secret');
 	variable_del('sf_callback_url');
 	variable_del('sf_login_url');
-	// drupal_set_message(t('Selected netForum module has been successfully uninstalled.'));
+	drupal_set_message(t('Salesforce schema has been successfully uninstalled.'));
 }

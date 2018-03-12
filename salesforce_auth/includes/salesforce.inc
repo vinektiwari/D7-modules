@@ -1,5 +1,4 @@
 <?php
-
 /**
 * Ability to authorize and communicate with the Salesforce REST API.
 */

@@ -1,15 +1,12 @@
 <?php
 /**
- * Owner : FusionSpan LLC;
- * Site URL : http://fusionspan.com/;
- * Description : This module givse attempt to athorized in drupal site with Salesforce REST API's.
- * Here we are manupulate the user login form to access the salesforce by just providing the link
- * "Login with Salesforce" to the user login form.
- *
  * Author : Vinek T.;
- * Start Date : 7th July'2017;
+ * Description : This module givse attempt to athorized in drupal site with 
+ * Salesforce REST API's. Here we are manupulate the user login form to access 
+ * the salesforce by just providing the link "Login with Salesforce" to 
+ * the user login form.
+ * Date : 7th July'2017;
  */
-
 
 /**
  * @file
@@ -34,7 +31,7 @@ function salesforce_auth_init() {
  */
 function salesforce_auth_menu() {
 	$items = array();
-	$items['admin/config/salesforce'] = array(
+	$items['admin/config/salesforce'] = array (
 		'title' => 'Salesforce',
 		'description' => 'Set the connection characteristics for the Salesforce database',
 		'page callback' => 'system_admin_menu_block_page',
@@ -42,14 +39,14 @@ function salesforce_auth_menu() {
 		'file' => 'system.admin.inc',
 		'file path' => drupal_get_path('module', 'system'),
 	);
-	$items['admin/config/salesforce/auth/settings'] = array(
+	$items['admin/config/salesforce/auth/settings'] = array (
 		'title' => 'Salesforce Auth Configuration',
 		'description' => 'Salesforce Authorization.',
 		'page callback' => 'drupal_get_form',
 		'page arguments' => array('salesforce_auth_admin_settings'),
 		'access arguments' => array('administer site configuration'),
 	);
-	$items['salesforce/oauth_callback'] = array(
+	$items['salesforce/oauth_callback'] = array (
 		'title' => 'Salesforce Callback',
 		'page callback' => 'salesforce_oauth_callback',
 		'access arguments' => array('access content'),
@@ -62,7 +59,6 @@ function salesforce_auth_menu() {
  * Implements hook_help().
  */
 function salesforce_auth_help() {
-	
 }
 
 /**
@@ -70,7 +66,7 @@ function salesforce_auth_help() {
  */
 function salesforce_auth_permission() {
 	return array(
-		'administer salesforce' => array(
+		'administer salesforce' => array (
 			'title' => t('administer salesforce'),
 			'description' => t('Administer Salesforce integration.'),
 			'restrict access' => TRUE,
@@ -89,34 +85,34 @@ function salesforce_auth_permission() {
  * @return
  */
 function salesforce_auth_admin_settings($node, &$form_state) {
-	$form['sf_auth'] = array(
+	$form['sf_auth'] = array (
 		'#title'       => t('Salesforce Configuration'),
 		'#type'        => 'fieldset',
 		'#collapsible' => TRUE,
 		'#collapsed'   => FALSE,
 	);
-	$form['sf_auth']['sf_cosumer_key'] = array(
+	$form['sf_auth']['sf_cosumer_key'] = array (
 		'#title'         => t('Consumer Key'),
 		'#description'   => t('Salesforce consumer key '),
 		'#type'          => 'textfield',
 		'#default_value' => variable_get('sf_cosumer_key'),
 		'#required'      => TRUE,
 	);
-	$form['sf_auth']['sf_cosumer_secret'] = array(
+	$form['sf_auth']['sf_cosumer_secret'] = array (
 		'#title'         => t('Consumer Secret'),
 		'#description'   => t('Salesforce consumer secret'),
 		'#type'          => 'textfield',
 		'#default_value' => variable_get('sf_cosumer_secret'),
 		'#required'      => TRUE,
 	);
-	$form['sf_auth']['sf_callback_url'] = array(
+	$form['sf_auth']['sf_callback_url'] = array (
 		'#title'         => t('Callback URI'),
 		'#description'   => t('Salesforce Callback URL - must start with https:// (SSL required)'),
 		'#type'          => 'textfield',
 		'#default_value' => variable_get('sf_callback_url'),
 		'#required'      => TRUE,
 	);
-	$form['sf_auth']['sf_login_url'] = array(
+	$form['sf_auth']['sf_login_url'] = array (
 		'#title'         => t('Login URI'),
 		'#description'   => t('Salesforce Login URI (must be a valid salesforce login url)'),
 		'#type'          => 'textfield',
@@ -157,7 +153,8 @@ function salesforce_auth_admin_settings_validate($form, &$form_state) {
 }
 
 /**
- * Generate Login with Salesforce link and use into user_login_form_alter to display it.
+ * Generate Login with Salesforce link and use into user_login_form_alter 
+ * to display it.
  */
 function generateLoginLink() {
     global $user;
@@ -184,6 +181,7 @@ function salesforce_auth_form_user_login_alter(&$form, $form_state) {
 	drupal_add_css(drupal_get_path('module', 'salesforce_auth') . '/css/global.css');
 
 	$form['name']['#title'] = t('Username/Email');
+	// TO Do : To change the placeholder if in case.
 	// $form['name']['#attributes']['placeholder'] = t('Username/Email');
 	// $form['password']['#attributes']['placeholder'] = t('Passwordk');
 	
@@ -253,7 +251,8 @@ function salesforce_oauth_callback() {
 
 	            // login the user.
 	            user_external_login_register($name, 'salesforce_auth');
-	        } else {
+	        } 
+	        else {
 	        	// There is no uid with that user_id but there may be already be a user with that email
 	            if ($existing_uid != $uid) {
 	            	$name = array_keys($form)[0];
@@ -281,7 +280,8 @@ function salesforce_oauth_callback() {
 		}
 		drupal_goto($base_url);
 
-	} else {
+	} 
+	else {
 		throw new \Exception("The credentials you entered does not match our records.", 1);
 	}
 }
@@ -323,21 +323,6 @@ function salesforce_get_api() {
 	);
 }
 
-
-
-/**
- * Implements hook_form_contact_site_form_alter().
- * This function will add a phone number field to the site-wide contact form,
- * by implementing hook_form_FORM_ID_alter().
- */
-// function salesforce_auth_form_contact_site_form_alter(&$form, &$form_state, $form_id) {
-// 	// Add a file field to the contact form.
-// 	$form['cv_file'] = array(
-// 		'#type' => 'file',
-// 		'#title' => t('Attach your files here'),
-// 	);
-// }
-
 /**
 *  Implementation of hook_form_alter().
 */  
@@ -351,8 +336,9 @@ function salesforce_auth_form_views_exposed_form_alter(&$form, &$form_state, $fo
 	}
 }
 
-
-/* ============================================================= */
+/**
+*  Implementation for http request.
+*/  
 function httpRequest($url, $data, $headers = array(), $method = 'GET') {
     if ($method === 'GET') {
         $data = NULL;
@@ -366,6 +352,9 @@ function httpRequest($url, $data, $headers = array(), $method = 'GET') {
     return drupal_http_request($url, $options);
 }
 
+/**
+*  Requesting token from httpRequest for sign in.
+*/ 
 function requestToken($code) {
     $url = variable_get('sf_login_url'). '/services/oauth2/token';
     $headers = array(
@@ -384,6 +373,9 @@ function requestToken($code) {
     return $data;
 }
 
+/**
+*  Requesting user info from httpRequest for sign in.
+*/
 function requestUserInfo($url, $accessToken) {
     $headers = array(
         'Content-type' => 'application/x-www-form-urlencoded',
@@ -392,6 +384,9 @@ function requestUserInfo($url, $accessToken) {
 	return httpRequest($url, "", $headers, "GET");
 }
 
+/**
+*  Requesting logout session from drupal as well as http.
+*/
 function requestLogout($token) {
 	$url = variable_get('sf_login_url')."/services/oauth2/revoke";
     $data = drupal_http_build_query(array(
@@ -405,6 +400,9 @@ function requestLogout($token) {
     return $data;
 }
 
+/**
+*  Implementing some helper methods to interract with API's.
+*/
 function _sf_get_uid_from_username($username) {
 	return db_query('SELECT uid from {users} WHERE name = :name', [':name' => $username])->fetchField();
 }

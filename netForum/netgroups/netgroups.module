@@ -1,12 +1,9 @@
 <?php
 /**
- * Owner : FusionSpan LLC;
- * Site URL : http://fusionspan.com/;
- * Description : This module synch user roles from netForum account and can be integrate with 
- * netForum SSO module;
- *
+ * Author : Vinek T.;
+ * Description : This module synch user roles from netFORUM account and can be 
+ * integrate with netFORUM SSO module;
  * Date : 4th & 5th April'2017;
- * Author : Vinek T;
  */
 
 /**
@@ -27,7 +24,7 @@ function netgroups_help($path, $arg) {
     switch ($path) {
         case 'admin/help#netgroups': {
             return (
-                '<h3>' . t('netForum Group Help') . '</h3>' .
+                '<h3>' . t('netFORUM Group Help') . '</h3>' .
                 '<p>' . t('This module syncs user roles according to neForum account.') . '</p>'
             );
         }
@@ -41,7 +38,7 @@ function netgroups_help($path, $arg) {
 function netgroups_menu() {
     $items['admin/config/netforum/group/settings'] = array(
         'title' => 'xWeb Groups Configuration',
-        'description' => 'Set local groups based on netForum account.',
+        'description' => 'Set local groups based on netFORUM account.',
         'access arguments' => array('administer site configuration'),
         'page callback' => 'drupal_get_form',
         'page arguments' => array('netgroups_admin_settings_form'),
@@ -54,7 +51,6 @@ function netgroups_menu() {
  * Implements hook_form().
  */
 function netgroups_admin_settings_form($form, &$form_state) {
-    
     // lazy variable to play with
     $input = isset($form_state['values']) ? $form_state['values'] : [];
 
@@ -193,7 +189,6 @@ function _dynamic_field_callback($form, $form_state) {
     if ( !empty($fieldset) && isset($form[$fieldset]) ) {
         return $form[$fieldset][$wrapper];
     }
-
     return $form[$wrapper];
 }
 
@@ -216,8 +211,10 @@ function netgroups_admin_settings_form_validate($form, &$form_state) {
     if ( isset($input['netgroups_group_name_members'])) {
         if($input['netgroups_ask_member_flag'] && !preg_match('/^[a-z0-9]{5,64}$/', $input['netgroups_group_name_members'])){
             form_set_error('netgroups_group_name_members', t('Invalid Group Name for members; must be lower case alpha numeric with minimum 5 characters.'));
-        } else { 
-            //in the case the checkbox was unchecked do not update this input value
+        } 
+        else { 
+            //in the case the checkbox was unchecked do not update this input 
+            // value
             if(!$input['netgroups_ask_member_flag']){
                 $input['netgroups_group_name_members'] = variable_get('netgroups_group_name_members', 'nfmembers');
             }
@@ -272,8 +269,8 @@ function netgroups_admin_settings_form_validate($form, &$form_state) {
 
 /**
  * Implementing hook_validate.
- * Important and main function for this module which act on the netForum groups associated with
- * netauth module
+ * Important and main function for this module which act on the netFORUM groups
+ * associated with netauth module
  */
 function netgroups_groups_validate() {
     global $user;
@@ -289,7 +286,7 @@ function netgroups_groups_validate() {
     // Getting customer key
     $cst_key = _netauth_get_cst_key_from_uid($user->uid);
     
-    // Call netForum API to get the request
+    // Call netFORUM API to get the request
     try {
         $userinfo = _netforum_getCustByKey($cst_key);
         $eweb = checkEWebUser($name,$pass);
@@ -325,7 +322,7 @@ function netgroups_groups_validate() {
     $group_name = 'netgroups_group_name_non_members';
     $member_type = 'nonmember';
     if ( $member->getsBenefits == 1) {
-        if(!empty(variable_get('netgroups_ask_receives_benefits', 0))){
+        if (!empty(variable_get('netgroups_ask_receives_benefits', 0)) ) {
             $group_name = 'netgroups_group_name_benefits';
             $member_type = 'benefits';
             $parent = _netforum_getCustByKey($member->ParentOrgKey);
@@ -333,14 +330,16 @@ function netgroups_groups_validate() {
                 ? "benefits_".(string) strtolower($parent['ProductCode'])
                 : variable_get('netgroups_group_name_benefits');
         }
-    } else if ($member->lifeflag == 1){
-        if(!empty(variable_get("netgroups_ask_lifemember", 0))){
+    } 
+    else if ($member->lifeflag == 1) {
+        if (!empty(variable_get("netgroups_ask_lifemember", 0))) {
             $group_name = 'netgroups_group_name_lifemember';
             $group = variable_get('netgroups_group_name_lifemember');
             $member_type = 'lifemember';    
         }
-    } else if ($member->flag == 1) {
-        if(!empty(variable_get("netgroups_ask_member_flag", 0))){
+    } 
+    else if ($member->flag == 1) {
+        if ( !empty(variable_get("netgroups_ask_member_flag", 0)) ) {
             $group_name = 'netgroups_group_name_members';
             $group = variable_get('netgroups_group_name_members');
             $member_type = 'member';
@@ -361,32 +360,36 @@ function netgroups_groups_validate() {
                 }
             }
         }
-    } else {
+    } 
+    else {
         $group_name = 'netgroups_group_name_non_members'; 
         
         //need to check if the parentOrg is a member
         $parent = null;
-        if(!empty($member->ParentOrgKey)){
+        if (!empty($member->ParentOrgKey) ) {
             $parent = _netforum_getCustByKey($member->ParentOrgKey);
         }
 
-        if(isset($parent) ) {
-            if(preg_match("/(corporate)/i", $parent['ProductCode'])){
-                if(isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
-                    if($parent['MemberFlag'] == '1') {
+        if (isset($parent) ) {
+            if (preg_match("/(corporate)/i", $parent['ProductCode'])) {
+                if (isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
+                    if ($parent['MemberFlag'] == '1') {
                         $group  = "corp_mem_" . (string) strtolower($parent['ProductCode']);
                         $member_type = "corp_mem";
-                    } else {
+                    } 
+                    else {
                         $group  = "corp_non_mem_" . (string) strtolower($parent['ProductCode']);
                         $member_type = "corp_non_mem";
                     }
                 }
-            } else if (preg_match("/(institution)/i", $parent['ProductName'])) {
-                if(isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
-                    if($parent['MemberFlag'] == '1') {
+            } 
+            else if (preg_match("/(institution)/i", $parent['ProductName'])) {
+                if (isset($parent['ProductCode']) && !empty($parent['ProductCode'])) {
+                    if ($parent['MemberFlag'] == '1') {
                         $group  = "inst_mem_" . (string) strtolower($parent['ProductCode']);
                         $member_type = "inst_mem";
-                    } else {
+                    } 
+                    else {
                         $group  = "inst_non_mem_" . (string) strtolower($parent['ProductCode']);
                         $member_type = "inst_non_mem";
                     }
@@ -450,25 +453,28 @@ function _netgroups_remove_role_from_user($user, $role) {
 }
 
 /**
- * Helper functions to add role with respect to the user's uid based on their username.
+ * Helper functions to add role with respect to the user's uid based on 
+ * their username.
  */
 function _netgroups_add_role_to_user($user, $role) {
     user_save($user, [ 'roles' => array_unique($user->roles + [$role->rid => $role->name]) ]);
 }
 
 /**
- * Adds a new role. If a role is passed in as copyRole, the values are copied over from it 
+ * Adds a new role. If a role is passed in as copyRole, the values are c
+ * opied over from it 
  * @param unknown $machine_name
  * @param number $weight
  * @param string $copyRole
- * @return A fully-loaded role object if a role with the given name exists, or FALSE otherwise. 
+ * @return A fully-loaded role object if a role with the given name exists, 
+ * or FALSE otherwise. 
  */
 function _netgroups_add_role($machine_name, $weight = 0,  $copyRole = null) {
     $role = [];
-    if($copyRole != null && isset ($copyRole->rid)){
+    if ($copyRole != null && isset ($copyRole->rid)) {
         $copyRole = (array) $copyRole;
         foreach ($copyRole as $key => $value){
-            if($key !== 'rid'){
+            if ($key !== 'rid') {
                 $role[$key] = $value;
             }
         }
@@ -483,7 +489,8 @@ function _netgroups_add_role($machine_name, $weight = 0,  $copyRole = null) {
             //copy permissions
             user_role_change_permissions(user_role_load_by_name($machine_name)->rid, $permissions[$copyRole['rid']]);
         }
-    } else {
+    } 
+    else {
         $role = (object) [
             'name'   => $machine_name,
             'weight' => $weight
@@ -494,7 +501,9 @@ function _netgroups_add_role($machine_name, $weight = 0,  $copyRole = null) {
     return user_role_load_by_name($machine_name);
 }
 
-/* =================== netForum SOAP API Call Functions =================== */
+/**
+ * Function to check eWeb user.
+ */
 function checkEWebUser($name,$pass) {
     $response = array();
     $wsdlurl = variable_get('netauth_wsdl_url');
@@ -506,7 +515,7 @@ function checkEWebUser($name,$pass) {
     $token = $response['AuthorizationToken']->Token;
 
     // Making of soapHeader
-    if ($response != null || isset($response['AuthorizationToken']) || isset($response['AuthorizationToken']->Token)){
+    if ($response != null || isset($response['AuthorizationToken']) || isset($response['AuthorizationToken']->Token)) {
         $token = $response['AuthorizationToken']->Token;
     }
     $header = new SoapHeader($getResult, "AuthorizationToken", array("Token" => $token));
@@ -516,7 +525,9 @@ function checkEWebUser($name,$pass) {
     return $array['Result'];
 }
 
-/* =================== Other Important Functions =================== */
+/**
+ * Function to find existing file present or not.
+ */
 if (!function_exists('findFiles')) {
     function findFiles($directory, $extensions = []) {
         if ( !function_exists('glob_recursive') ) {

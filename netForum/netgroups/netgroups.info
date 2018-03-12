@@ -1,10 +1,10 @@
-name = netForum Groups
-description = Update user roles according to users netForum account via xWeb by it's API console.
-package = FusionSpan
+name = netFORUM Groups
+description = Update user roles according to users netFORUM account via xWeb by it's API console.
+package = netFORUM
 core = 7.x
-version = 7.x-0.1-dev
+version = 7.x-2.0
 
+files[] = netgroups.install
 configure = admin/config/netforum/group/settings
 dependencies[] = netauth
 dependencies[] = rules
-files[] = netgroups.install

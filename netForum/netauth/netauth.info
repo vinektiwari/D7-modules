@@ -1,8 +1,8 @@
-name = netForum SSO
+name = netFORUM SSO
 description = This module allow users to get log-in netFORUM eWb via xWeb by it's API console. 
-package = FusionSpan
-
+package = netFORUM
 core = 7.x
-version = 7.x-0.1-dev
+version = 7.x-2.0
+
 files[] = netauth.install
 configure = admin/config/netforum/auth/settings
